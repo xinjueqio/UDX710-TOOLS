@@ -40,9 +40,9 @@
 
 ## 📸 界面预览
 
-| 主面板 | 网络信息 | WiFi管理 | 系统设置 |
+| 主页管理 | 网络管理 | 高级网络 | 系统设置 |
 |:---:|:---:|:---:|:---:|
-| ![主面板](docs/screenshot1.png) | ![网络信息](docs/screenshot2.png) | ![WiFi管理](docs/screenshot3.png) | ![系统设置](docs/screenshot4.png) |
+| ![主页管理](docs/screenshot1.png) | ![网络管理](docs/screenshot2.png) | ![高级网络](docs/screenshot3.png) | ![系统设置](docs/screenshot4.png) |
 
 ## 功能特性
 
@@ -175,14 +175,36 @@ make
 - TailwindCSS - 样式框架
 - FontAwesome - 图标库
 
-## 许可证
+## 🌐 远程管理与网页控制
 
-本项目采用 GNU通用公共许可证v3.0 - 详见 [LICENSE](LICENSE) 文件。
+内置轻量级 Web Server，可通过浏览器访问控制界面。
 
-## 贡献
+**支持功能**：设备状态卡片、实时性能监控、网络控制与调试
 
-欢迎贡献代码！请随时提交Pull Request。
+| 版本 | 默认访问地址 |
+|:---:|:---|
+| UDX710 通用版 | `http://设备IP:6677` |
+| SZ50 专用版 | `http://设备IP:80` |
 
+```bash
+# 启动程序（默认端口）
+./server
+
+# 自定义端口启动
+./server 80
+```
+
+## 📜 开源协议
+
+本项目采用 **GPLv3** 协议，这是强 Copyleft 协议：
+
+| ✅ 允许 | ⚠️ 必须 | ❌ 禁止 |
+|:---|:---|:---|
+| 自由使用、修改、分发 | 保留版权声明 | 闭源商业化 |
+| 分发修改版本 | 公开源代码（分发时） | 删除版权信息 |
+| | 使用相同协议 | 更改为其他协议 |
+
+详见 [LICENSE](LICENSE)
 
 ## ☕ 支持项目
 
@@ -197,11 +219,5 @@ make
 欢迎加入群聊一起讨论！
 
 - **QQ群**: 1029148488
-
-## 🔗 开源协议
-
-本项目遵循 **GPLv3 License**
-
-可自由使用、修改与分发，但请保留作者署名。
 
 欢迎提交 Issue / Pull Request 一起完善项目 💡

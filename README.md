@@ -42,9 +42,9 @@ Lightweight, efficient, and perfect for resource-constrained embedded devices!
 
 ## 📸 Screenshots
 
-| Dashboard | Network Info | WiFi Management | System Settings |
+| Home | Network | Advanced Network | System Settings |
 |:---:|:---:|:---:|:---:|
-| ![Dashboard](docs/screenshot1.png) | ![Network](docs/screenshot2.png) | ![WiFi](docs/screenshot3.png) | ![System](docs/screenshot4.png) |
+| ![Home](docs/screenshot1.png) | ![Network](docs/screenshot2.png) | ![Advanced](docs/screenshot3.png) | ![System](docs/screenshot4.png) |
 
 ## Featu
 
@@ -177,14 +177,36 @@ The backend uses cross-compilation targeting aarch64-linux-gnu. Ensure your tool
 - TailwindCSS - Styling
 - FontAwesome - Icons
 
-## License
+## 🌐 Remote Management
 
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+Built-in lightweight Web Server for browser-based control interface.
 
-## Contributing
+**Features**: Device status cards, real-time monitoring, network control & debugging
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+| Version | Default Access |
+|:---:|:---|
+| UDX710 Generic | `http://DEVICE_IP:6677` |
+| SZ50 Dedicated | `http://DEVICE_IP:80` |
 
+```bash
+# Start server (default port)
+./server
+
+# Start with custom port
+./server 80
+```
+
+## 📜 License
+
+This project is licensed under **GPLv3** (strong Copyleft):
+
+| ✅ Allowed | ⚠️ Required | ❌ Prohibited |
+|:---|:---|:---|
+| Use, modify, distribute | Keep copyright notices | Closed-source commercialization |
+| Distribute modified versions | Open source (when distributing) | Remove copyright info |
+| | Use same license | Change to other licenses |
+
+See [LICENSE](LICENSE)
 
 ## ☕ Support the Project
 
@@ -199,11 +221,5 @@ This project is completely open source and free. If you like this project, you c
 Welcome to join the discussion!
 
 - **QQ Group**: 1029148488
-
-## 🔗 License
-
-This project is licensed under **GPLv3 License**.
-
-Free to use, modify and distribute, but please keep the author attribution.
 
 Welcome to submit Issues / Pull Requests to improve the project 💡
