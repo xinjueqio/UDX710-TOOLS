@@ -66,6 +66,12 @@ static inline void http_method_error(struct mg_connection *c) {
         if (!http_is_method(hm, "DELETE")) { http_method_error(c); return; } \
     } while(0)
 
+#define HTTP_CHECK_PUT(c, hm) \
+    do { \
+        HTTP_HANDLE_OPTIONS(c, hm); \
+        if (!http_is_method(hm, "PUT")) { http_method_error(c); return; } \
+    } while(0)
+
 /* 仅处理OPTIONS，不检查方法（用于支持多方法的handler） */
 #define HTTP_CHECK_ANY(c, hm) \
     do { \

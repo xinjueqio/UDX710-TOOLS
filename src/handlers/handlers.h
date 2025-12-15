@@ -48,6 +48,27 @@ void handle_update_check(struct mg_connection *c, struct mg_http_message *hm);
 void handle_get_system_time(struct mg_connection *c, struct mg_http_message *hm);
 void handle_set_system_time(struct mg_connection *c, struct mg_http_message *hm);
 
+/* 数据连接和漫游 API */
+void handle_data_status(struct mg_connection *c, struct mg_http_message *hm);
+void handle_roaming_status(struct mg_connection *c, struct mg_http_message *hm);
+
+/* APN 管理 API */
+void handle_apn_list(struct mg_connection *c, struct mg_http_message *hm);
+void handle_apn_set(struct mg_connection *c, struct mg_http_message *hm);
+
+/* 插件管理 API */
+void handle_shell_execute(struct mg_connection *c, struct mg_http_message *hm);
+void handle_plugin_list(struct mg_connection *c, struct mg_http_message *hm);
+void handle_plugin_upload(struct mg_connection *c, struct mg_http_message *hm);
+void handle_plugin_delete(struct mg_connection *c, struct mg_http_message *hm);
+void handle_plugin_delete_all(struct mg_connection *c, struct mg_http_message *hm);
+
+/* 脚本管理 API */
+void handle_script_list(struct mg_connection *c, struct mg_http_message *hm);
+void handle_script_upload(struct mg_connection *c, struct mg_http_message *hm);
+void handle_script_update(struct mg_connection *c, struct mg_http_message *hm);
+void handle_script_delete(struct mg_connection *c, struct mg_http_message *hm);
+
 #ifdef __cplusplus
 }
 #endif

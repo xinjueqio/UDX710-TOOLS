@@ -198,6 +198,56 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
                 handle_usb_mode_set(c, hm);
             }
         }
+        else if (mg_match(hm->uri, mg_str("/api/usb-advance"), NULL)) {
+            handle_usb_advance(c, hm);
+        }
+        /* 数据连接和漫游 API */
+        else if (mg_match(hm->uri, mg_str("/api/data"), NULL)) {
+            handle_data_status(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/roaming"), NULL)) {
+            handle_roaming_status(c, hm);
+        }
+        /* APN 管理 API */
+        else if (mg_match(hm->uri, mg_str("/api/apn"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+                handle_apn_list(c, hm);
+            } else {
+                handle_apn_set(c, hm);
+            }
+        }
+        /* 插件管理 API */
+        else if (mg_match(hm->uri, mg_str("/api/shell"), NULL)) {
+            handle_shell_execute(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/plugins/all"), NULL)) {
+            handle_plugin_delete_all(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/plugins"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+                handle_plugin_list(c, hm);
+            } else {
+                handle_plugin_upload(c, hm);
+            }
+        }
+        else if (mg_match(hm->uri, mg_str("/api/plugins/*"), NULL)) {
+            handle_plugin_delete(c, hm);
+        }
+        /* 脚本管理 API */
+        else if (mg_match(hm->uri, mg_str("/api/scripts"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+                handle_script_list(c, hm);
+            } else {
+                handle_script_upload(c, hm);
+            }
+        }
+        else if (mg_match(hm->uri, mg_str("/api/scripts/*"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "PUT", 3) == 0) {
+                handle_script_update(c, hm);
+            } else {
+                handle_script_delete(c, hm);
+            }
+        }
         /* 未知 API 路由 */
         else {
             HTTP_ERROR(c, 404, "Endpoint not found");

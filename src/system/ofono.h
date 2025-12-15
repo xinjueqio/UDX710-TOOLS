@@ -15,7 +15,7 @@ extern "C" {
 /* ofono D-Bus 常量 */
 #define OFONO_SERVICE           "org.ofono"
 #define OFONO_RADIO_SETTINGS    "org.ofono.RadioSettings"
-#define OFONO_TIMEOUT_MS        10000
+#define OFONO_TIMEOUT_MS        30000
 
 /**
  * 初始化 D-Bus 连接
@@ -96,6 +96,89 @@ int ofono_set_datacard(const char* modem_path);
  * @return 成功返回0，失败返回错误码
  */
 int ofono_network_get_signal_strength(const char* modem_path, int* strength, int* dbm, int timeout_ms);
+
+/**
+ * 获取数据连接状态
+ * @param active 输出数据连接状态 (1=激活, 0=未激活)
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_get_data_status(int *active);
+
+/**
+ * 设置数据连接状态
+ * @param active 1=开启数据连接, 0=关闭数据连接
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_set_data_status(int active);
+
+/**
+ * 获取漫游状态
+ * @param roaming_allowed 输出漫游允许状态 (1=允许, 0=禁止)
+ * @param is_roaming 输出当前是否漫游中 (1=漫游中, 0=非漫游)
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_get_roaming_status(int *roaming_allowed, int *is_roaming);
+
+/**
+ * 设置漫游允许状态
+ * @param allowed 1=允许漫游, 0=禁止漫游
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_set_roaming_allowed(int allowed);
+
+/* ==================== APN 管理 API ==================== */
+
+#define MAX_APN_CONTEXTS 16
+#define APN_STRING_SIZE 128
+
+/**
+ * APN Context 结构体
+ */
+typedef struct {
+    char path[APN_STRING_SIZE];        /* D-Bus 路径 (如 /ril_0/context2) */
+    char name[APN_STRING_SIZE];        /* 名称 */
+    int active;                        /* 是否激活 */
+    char apn[APN_STRING_SIZE];         /* APN 名称 (如 cbnet, cmnet) */
+    char protocol[32];                 /* 协议: ip/ipv6/dual */
+    char username[APN_STRING_SIZE];    /* 用户名 */
+    char password[APN_STRING_SIZE];    /* 密码 */
+    char auth_method[32];              /* 认证方式: none/pap/chap */
+    char context_type[32];             /* 类型: internet/mms/ims */
+} ApnContext;
+
+/**
+ * 获取所有 APN Context 列表
+ * @param contexts 输出 context 数组
+ * @param max_count 数组最大容量
+ * @return 成功返回 context 数量，失败返回负数错误码
+ */
+int ofono_get_all_apn_contexts(ApnContext *contexts, int max_count);
+
+/**
+ * 设置 APN 单个属性
+ * @param context_path context 的 D-Bus 路径
+ * @param property 属性名
+ * @param value 属性值
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_set_apn_property(const char *context_path, const char *property, const char *value);
+
+/**
+ * 批量设置 APN 属性
+ * @param context_path context 的 D-Bus 路径
+ * @param apn APN 名称 (NULL 表示不修改)
+ * @param protocol 协议 (NULL 表示不修改)
+ * @param username 用户名 (NULL 表示不修改)
+ * @param password 密码 (NULL 表示不修改)
+ * @param auth_method 认证方式 (NULL 表示不修改)
+ * @return 成功返回0，失败返回错误码
+ */
+int ofono_set_apn_properties(const char *context_path, 
+                             const char *apn,
+                             const char *protocol,
+                             const char *username,
+                             const char *password,
+                             const char *auth_method);
 
 #ifdef __cplusplus
 }

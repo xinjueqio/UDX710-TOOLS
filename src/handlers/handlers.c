@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <glib.h>
 #include "mongoose.h"
 #include "handlers.h"
@@ -1024,5 +1026,585 @@ void handle_set_system_time(struct mg_connection *c, struct mg_http_message *hm)
         HTTP_OK(c, json);
     } else {
         HTTP_OK(c, "{\"Code\":1,\"Error\":\"所有NTP服务器同步失败\"}");
+    }
+}
+
+/* ==================== 数据连接和漫游 API ==================== */
+#include "ofono.h"
+
+/* GET/POST /api/data - 数据连接开关 */
+void handle_data_status(struct mg_connection *c, struct mg_http_message *hm) {
+    char response[256];
+
+    if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+        /* GET - 查询数据连接状态 */
+        int active = 0;
+        if (ofono_get_data_status(&active) == 0) {
+            snprintf(response, sizeof(response),
+                "{\"status\":\"ok\",\"message\":\"Success\",\"data\":{\"active\":%s}}",
+                active ? "true" : "false");
+            HTTP_OK(c, response);
+        } else {
+            HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to get data connection status\"}");
+        }
+    } else if (hm->method.len == 4 && memcmp(hm->method.buf, "POST", 4) == 0) {
+        /* POST - 设置数据连接状态 */
+        int active = 0;
+        int val = 0;
+        if (mg_json_get_bool(hm->body, "$.active", &val)) {
+            active = val;
+        } else {
+            HTTP_ERROR(c, 400, "Invalid request body, 'active' field required");
+            return;
+        }
+
+        if (ofono_set_data_status(active) == 0) {
+            snprintf(response, sizeof(response),
+                "{\"status\":\"ok\",\"message\":\"Data connection %s successfully\",\"data\":{\"active\":%s}}",
+                active ? "enabled" : "disabled",
+                active ? "true" : "false");
+            HTTP_OK(c, response);
+        } else {
+            HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to set data connection\"}");
+        }
+    } else {
+        HTTP_ERROR(c, 405, "Method not allowed");
+    }
+}
+
+/* GET/POST /api/roaming - 漫游开关 */
+void handle_roaming_status(struct mg_connection *c, struct mg_http_message *hm) {
+    char response[256];
+
+    if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+        /* GET - 查询漫游状态 */
+        int roaming_allowed = 0;
+        int is_roaming = 0;
+        if (ofono_get_roaming_status(&roaming_allowed, &is_roaming) == 0) {
+            snprintf(response, sizeof(response),
+                "{\"status\":\"ok\",\"message\":\"Success\",\"data\":{\"roaming_allowed\":%s,\"is_roaming\":%s}}",
+                roaming_allowed ? "true" : "false",
+                is_roaming ? "true" : "false");
+            HTTP_OK(c, response);
+        } else {
+            HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to get roaming status\"}");
+        }
+    } else if (hm->method.len == 4 && memcmp(hm->method.buf, "POST", 4) == 0) {
+        /* POST - 设置漫游允许状态 */
+        int allowed = 0;
+        int val = 0;
+        if (mg_json_get_bool(hm->body, "$.allowed", &val)) {
+            allowed = val;
+        } else {
+            HTTP_ERROR(c, 400, "Invalid request body, 'allowed' field required");
+            return;
+        }
+
+        if (ofono_set_roaming_allowed(allowed) == 0) {
+            /* 读取当前状态确认 */
+            int roaming_allowed = 0;
+            int is_roaming = 0;
+            ofono_get_roaming_status(&roaming_allowed, &is_roaming);
+            
+            snprintf(response, sizeof(response),
+                "{\"status\":\"ok\",\"message\":\"Roaming %s successfully\",\"data\":{\"roaming_allowed\":%s,\"is_roaming\":%s}}",
+                allowed ? "enabled" : "disabled",
+                roaming_allowed ? "true" : "false",
+                is_roaming ? "true" : "false");
+            HTTP_OK(c, response);
+        } else {
+            HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to set roaming\"}");
+        }
+    } else {
+        HTTP_ERROR(c, 405, "Method not allowed");
+    }
+}
+
+
+/* ==================== APN 管理 API ==================== */
+
+/* GET /api/apn - 获取 APN 列表 */
+void handle_apn_list(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+
+    ApnContext contexts[MAX_APN_CONTEXTS];
+    int count = ofono_get_all_apn_contexts(contexts, MAX_APN_CONTEXTS);
+
+    if (count < 0) {
+        HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to get APN list\"}");
+        return;
+    }
+
+    /* 构建 JSON 响应 */
+    char json[8192];
+    int offset = 0;
+    offset += snprintf(json + offset, sizeof(json) - offset, 
+        "{\"status\":\"ok\",\"message\":\"Success\",\"data\":{\"contexts\":[");
+
+    for (int i = 0; i < count; i++) {
+        ApnContext *ctx = &contexts[i];
+        offset += snprintf(json + offset, sizeof(json) - offset,
+            "%s{"
+            "\"path\":\"%s\","
+            "\"name\":\"%s\","
+            "\"active\":%s,"
+            "\"apn\":\"%s\","
+            "\"protocol\":\"%s\","
+            "\"username\":\"%s\","
+            "\"password\":\"%s\","
+            "\"auth_method\":\"%s\","
+            "\"context_type\":\"%s\""
+            "}",
+            i > 0 ? "," : "",
+            ctx->path, ctx->name, ctx->active ? "true" : "false",
+            ctx->apn, ctx->protocol, ctx->username, ctx->password,
+            ctx->auth_method, ctx->context_type);
+    }
+
+    offset += snprintf(json + offset, sizeof(json) - offset, "]}}");
+    HTTP_OK(c, json);
+}
+
+/* POST /api/apn - 设置 APN 配置 */
+void handle_apn_set(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+
+    char context_path[128] = {0};
+    char apn[128] = {0};
+    char protocol[32] = {0};
+    char username[128] = {0};
+    char password[128] = {0};
+    char auth_method[32] = {0};
+
+    /* 解析 JSON 请求体 */
+    char *str;
+    str = mg_json_get_str(hm->body, "$.context_path");
+    if (str) { strncpy(context_path, str, sizeof(context_path) - 1); free(str); }
+
+    str = mg_json_get_str(hm->body, "$.apn");
+    if (str) { strncpy(apn, str, sizeof(apn) - 1); free(str); }
+
+    str = mg_json_get_str(hm->body, "$.protocol");
+    if (str) { strncpy(protocol, str, sizeof(protocol) - 1); free(str); }
+
+    str = mg_json_get_str(hm->body, "$.username");
+    if (str) { strncpy(username, str, sizeof(username) - 1); free(str); }
+
+    str = mg_json_get_str(hm->body, "$.password");
+    if (str) { strncpy(password, str, sizeof(password) - 1); free(str); }
+
+    str = mg_json_get_str(hm->body, "$.auth_method");
+    if (str) { strncpy(auth_method, str, sizeof(auth_method) - 1); free(str); }
+
+    /* 验证必填字段 */
+    if (strlen(context_path) == 0) {
+        HTTP_ERROR(c, 400, "context_path is required");
+        return;
+    }
+
+    /* 调用设置函数 */
+    int ret = ofono_set_apn_properties(
+        context_path,
+        strlen(apn) > 0 ? apn : NULL,
+        strlen(protocol) > 0 ? protocol : NULL,
+        strlen(username) > 0 ? username : NULL,
+        strlen(password) > 0 ? password : NULL,
+        strlen(auth_method) > 0 ? auth_method : NULL
+    );
+
+    if (ret == 0) {
+        /* 获取更新后的配置 */
+        ApnContext contexts[MAX_APN_CONTEXTS];
+        int count = ofono_get_all_apn_contexts(contexts, MAX_APN_CONTEXTS);
+        
+        /* 查找刚修改的 context */
+        ApnContext *updated = NULL;
+        for (int i = 0; i < count; i++) {
+            if (strcmp(contexts[i].path, context_path) == 0) {
+                updated = &contexts[i];
+                break;
+            }
+        }
+
+        char json[2048];
+        if (updated) {
+            snprintf(json, sizeof(json),
+                "{\"status\":\"ok\",\"message\":\"APN configuration updated successfully\","
+                "\"data\":{\"updated_context\":{"
+                "\"path\":\"%s\",\"name\":\"%s\",\"active\":%s,"
+                "\"apn\":\"%s\",\"protocol\":\"%s\",\"username\":\"%s\","
+                "\"password\":\"%s\",\"auth_method\":\"%s\",\"context_type\":\"%s\""
+                "}}}",
+                updated->path, updated->name, updated->active ? "true" : "false",
+                updated->apn, updated->protocol, updated->username,
+                updated->password, updated->auth_method, updated->context_type);
+        } else {
+            snprintf(json, sizeof(json),
+                "{\"status\":\"ok\",\"message\":\"APN configuration updated successfully\",\"data\":{}}");
+        }
+        HTTP_OK(c, json);
+    } else {
+        HTTP_OK(c, "{\"status\":\"error\",\"message\":\"Failed to set APN configuration\"}");
+    }
+}
+
+/* ==================== 插件管理 API ==================== */
+#include "plugin.h"
+
+/* POST /api/shell - 执行Shell命令 */
+void handle_shell_execute(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+
+    char cmd[1024] = {0};
+    char *cmd_str = mg_json_get_str(hm->body, "$.command");
+    if (cmd_str) {
+        strncpy(cmd, cmd_str, sizeof(cmd) - 1);
+        free(cmd_str);
+    }
+
+    if (strlen(cmd) == 0) {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"命令不能为空\",\"Data\":null}");
+        return;
+    }
+
+    char output[8192] = {0};
+    char response[16384];
+
+    if (execute_shell(cmd, output, sizeof(output)) == 0) {
+        /* 转义输出 */
+        char escaped[8192];
+        size_t j = 0;
+        for (size_t i = 0; output[i] && j < sizeof(escaped) - 2; i++) {
+            char ch = output[i];
+            if (ch == '"' || ch == '\\') {
+                escaped[j++] = '\\';
+            } else if (ch == '\n') {
+                escaped[j++] = '\\';
+                ch = 'n';
+            } else if (ch == '\r') {
+                escaped[j++] = '\\';
+                ch = 'r';
+            } else if (ch == '\t') {
+                escaped[j++] = '\\';
+                ch = 't';
+            }
+            if ((unsigned char)ch >= 0x20 || ch == 'n' || ch == 'r' || ch == 't') {
+                escaped[j++] = ch;
+            }
+        }
+        escaped[j] = '\0';
+
+        snprintf(response, sizeof(response),
+            "{\"Code\":0,\"Error\":\"\",\"Data\":\"%s\"}", escaped);
+    } else {
+        snprintf(response, sizeof(response),
+            "{\"Code\":1,\"Error\":\"命令执行失败\",\"Data\":\"%s\"}", output);
+    }
+
+    HTTP_OK(c, response);
+}
+
+/* GET /api/plugins - 获取插件列表 */
+void handle_plugin_list(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+
+    char *json = malloc(512 * 1024);  /* 512KB缓冲区 */
+    if (!json) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+
+    int count = get_plugin_list(json, 512 * 1024);
+    
+    char response[512 * 1024 + 128];
+    snprintf(response, sizeof(response),
+        "{\"Code\":0,\"Error\":\"\",\"Data\":%s,\"Count\":%d}", json, count);
+    
+    HTTP_OK(c, response);
+    free(json);
+}
+
+/* POST /api/plugins - 上传插件 */
+void handle_plugin_upload(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+
+    char name[256] = {0};
+    char *name_str = mg_json_get_str(hm->body, "$.name");
+    if (name_str) {
+        strncpy(name, name_str, sizeof(name) - 1);
+        free(name_str);
+    }
+
+    char *content_str = mg_json_get_str(hm->body, "$.content");
+    if (!content_str) {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"插件内容不能为空\",\"Data\":null}");
+        return;
+    }
+
+    if (strlen(name) == 0) {
+        /* 从内容中提取名称 */
+        strcpy(name, "plugin");
+    }
+
+    if (save_plugin(name, content_str) == 0) {
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"插件上传成功\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"插件保存失败\",\"Data\":null}");
+    }
+
+    free(content_str);
+}
+
+/* DELETE /api/plugins/:name - 删除指定插件 */
+void handle_plugin_delete(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_DELETE(c, hm);
+
+    /* 从URI中提取插件名 */
+    const char *uri = hm->uri.buf;
+    const char *name_start = strstr(uri, "/api/plugins/");
+    if (!name_start) {
+        HTTP_ERROR(c, 400, "无效的请求路径");
+        return;
+    }
+    name_start += 13;  /* 跳过 "/api/plugins/" */
+
+    /* 提取名称直到URI结束或遇到? */
+    char name[256] = {0};
+    int i = 0;
+    while (name_start[i] && name_start[i] != '?' && name_start[i] != ' ' && i < 255) {
+        name[i] = name_start[i];
+        i++;
+    }
+    name[i] = '\0';
+
+    if (strlen(name) == 0) {
+        HTTP_ERROR(c, 400, "插件名称不能为空");
+        return;
+    }
+
+    if (delete_plugin(name) == 0) {
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"插件删除成功\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"插件删除失败\",\"Data\":null}");
+    }
+}
+
+/* DELETE /api/plugins/all - 删除所有插件 */
+void handle_plugin_delete_all(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_DELETE(c, hm);
+
+    if (delete_all_plugins() == 0) {
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"所有插件已删除\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"删除失败\",\"Data\":null}");
+    }
+}
+
+/* ==================== 脚本管理 API ==================== */
+
+#define SCRIPTS_DIR "/home/root/6677/Plugins/scripts"
+
+/* GET /api/scripts - 获取脚本列表 */
+void handle_script_list(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+
+    char *json = malloc(256 * 1024);
+    if (!json) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+
+    strcpy(json, "[");
+    int first = 1;
+    int count = 0;
+
+    /* 确保目录存在 */
+    char mkdir_cmd[512];
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", SCRIPTS_DIR);
+    system(mkdir_cmd);
+
+    DIR *dir = opendir(SCRIPTS_DIR);
+    if (dir) {
+        struct dirent *entry;
+        while ((entry = readdir(dir)) != NULL) {
+            if (entry->d_type == DT_REG && strstr(entry->d_name, ".sh")) {
+                char filepath[512];
+                snprintf(filepath, sizeof(filepath), "%s/%s", SCRIPTS_DIR, entry->d_name);
+                
+                struct stat st;
+                if (stat(filepath, &st) == 0) {
+                    /* 读取脚本内容 */
+                    FILE *f = fopen(filepath, "r");
+                    char content[32768] = {0};
+                    if (f) {
+                        fread(content, 1, sizeof(content) - 1, f);
+                        fclose(f);
+                    }
+
+                    /* 转义内容 */
+                    char escaped[65536];
+                    size_t j = 0;
+                    for (size_t i = 0; content[i] && j < sizeof(escaped) - 2; i++) {
+                        char ch = content[i];
+                        if (ch == '"' || ch == '\\') { escaped[j++] = '\\'; }
+                        else if (ch == '\n') { escaped[j++] = '\\'; ch = 'n'; }
+                        else if (ch == '\r') { escaped[j++] = '\\'; ch = 'r'; }
+                        else if (ch == '\t') { escaped[j++] = '\\'; ch = 't'; }
+                        if ((unsigned char)ch >= 0x20 || ch == 'n' || ch == 'r' || ch == 't') {
+                            escaped[j++] = ch;
+                        }
+                    }
+                    escaped[j] = '\0';
+
+                    char item[70000];
+                    snprintf(item, sizeof(item),
+                        "%s{\"name\":\"%s\",\"size\":%ld,\"mtime\":%ld,\"content\":\"%s\"}",
+                        first ? "" : ",", entry->d_name, st.st_size, st.st_mtime, escaped);
+                    strcat(json, item);
+                    first = 0;
+                    count++;
+                }
+            }
+        }
+        closedir(dir);
+    }
+
+    strcat(json, "]");
+
+    char response[256 * 1024 + 128];
+    snprintf(response, sizeof(response),
+        "{\"Code\":0,\"Error\":\"\",\"Data\":%s,\"Count\":%d}", json, count);
+    
+    HTTP_OK(c, response);
+    free(json);
+}
+
+/* POST /api/scripts - 上传脚本 */
+void handle_script_upload(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+
+    char name[256] = {0};
+    char *name_str = mg_json_get_str(hm->body, "$.name");
+    if (name_str) {
+        strncpy(name, name_str, sizeof(name) - 1);
+        free(name_str);
+    }
+
+    char *content_str = mg_json_get_str(hm->body, "$.content");
+    if (!content_str) {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本内容不能为空\",\"Data\":null}");
+        return;
+    }
+
+    if (strlen(name) == 0) {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本名称不能为空\",\"Data\":null}");
+        free(content_str);
+        return;
+    }
+
+    /* 确保目录存在 */
+    char mkdir_cmd[512];
+    snprintf(mkdir_cmd, sizeof(mkdir_cmd), "mkdir -p %s", SCRIPTS_DIR);
+    system(mkdir_cmd);
+
+    /* 保存脚本 */
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s", SCRIPTS_DIR, name);
+    
+    FILE *f = fopen(filepath, "w");
+    if (f) {
+        fputs(content_str, f);
+        fclose(f);
+        /* 添加执行权限 */
+        char chmod_cmd[512];
+        snprintf(chmod_cmd, sizeof(chmod_cmd), "chmod +x %s", filepath);
+        system(chmod_cmd);
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"脚本上传成功\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本保存失败\",\"Data\":null}");
+    }
+
+    free(content_str);
+}
+
+/* PUT /api/scripts/:name - 更新脚本 */
+void handle_script_update(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_PUT(c, hm);
+
+    /* 从URI中提取脚本名 */
+    const char *uri = hm->uri.buf;
+    const char *name_start = strstr(uri, "/api/scripts/");
+    if (!name_start) {
+        HTTP_ERROR(c, 400, "无效的请求路径");
+        return;
+    }
+    name_start += 13;
+
+    char name[256] = {0};
+    int i = 0;
+    while (name_start[i] && name_start[i] != '?' && name_start[i] != ' ' && i < 255) {
+        name[i] = name_start[i];
+        i++;
+    }
+    name[i] = '\0';
+
+    if (strlen(name) == 0) {
+        HTTP_ERROR(c, 400, "脚本名称不能为空");
+        return;
+    }
+
+    char *content_str = mg_json_get_str(hm->body, "$.content");
+    if (!content_str) {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本内容不能为空\",\"Data\":null}");
+        return;
+    }
+
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s", SCRIPTS_DIR, name);
+    
+    FILE *f = fopen(filepath, "w");
+    if (f) {
+        fputs(content_str, f);
+        fclose(f);
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"脚本更新成功\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本更新失败\",\"Data\":null}");
+    }
+
+    free(content_str);
+}
+
+/* DELETE /api/scripts/:name - 删除脚本 */
+void handle_script_delete(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_DELETE(c, hm);
+
+    const char *uri = hm->uri.buf;
+    const char *name_start = strstr(uri, "/api/scripts/");
+    if (!name_start) {
+        HTTP_ERROR(c, 400, "无效的请求路径");
+        return;
+    }
+    name_start += 13;
+
+    char name[256] = {0};
+    int i = 0;
+    while (name_start[i] && name_start[i] != '?' && name_start[i] != ' ' && i < 255) {
+        name[i] = name_start[i];
+        i++;
+    }
+    name[i] = '\0';
+
+    if (strlen(name) == 0) {
+        HTTP_ERROR(c, 400, "脚本名称不能为空");
+        return;
+    }
+
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s", SCRIPTS_DIR, name);
+    
+    if (remove(filepath) == 0) {
+        HTTP_OK(c, "{\"Code\":0,\"Error\":\"\",\"Data\":\"脚本删除成功\"}");
+    } else {
+        HTTP_OK(c, "{\"Code\":1,\"Error\":\"脚本删除失败\",\"Data\":null}");
     }
 }

@@ -21,6 +21,20 @@ extern "C" {
 #define USB_MODE_CFG_PATH     "/mnt/data/mode.cfg"
 #define USB_MODE_TMP_CFG_PATH "/mnt/data/mode_tmp.cfg"
 
+/* USB configfs 路径 */
+#define USB_GADGET_PATH       "/sys/kernel/config/usb_gadget/g1"
+#define USB_CONFIG_PATH       "/sys/kernel/config/usb_gadget/g1/configs/b.1"
+#define USB_FUNCTIONS_PATH    "/sys/kernel/config/usb_gadget/g1/functions"
+#define USB_UDC_PATH          "/sys/kernel/config/usb_gadget/g1/UDC"
+
+/* IPA 硬件加速路径 */
+#define PAMU3_PROTOCOL_PATH   "/sys/devices/platform/soc/soc:ipa/2b300000.pamu3/pamu3_protocol"
+
+/* USB 网络接口配置 */
+#define USB_INTERFACE_IP      "192.168.66.1"
+#define USB_INTERFACE_MAC     "CC:E8:AC:C0:00:00"
+#define DEFAULT_UDC           "29100000.dwc3"
+
 /**
  * @brief 设置USB模式
  * @param mode 模式值 (1=CDC-NCM, 2=CDC-ECM, 3=RNDIS)
@@ -42,9 +56,23 @@ int usb_mode_get(void);
  */
 const char* usb_mode_name(int mode);
 
+/**
+ * @brief USB模式热切换（立即生效，无需重启）
+ * @param mode 模式值 (1=CDC-NCM, 2=CDC-ECM, 3=RNDIS)
+ * @return 0成功, 负数失败
+ */
+int usb_mode_switch_advanced(int mode);
+
+/**
+ * @brief 获取当前硬件USB模式（从configfs读取）
+ * @return 模式值, -1表示无法读取
+ */
+int usb_mode_get_current_hardware(void);
+
 /* HTTP API处理函数 */
 void handle_usb_mode_get(struct mg_connection *c, struct mg_http_message *hm);
 void handle_usb_mode_set(struct mg_connection *c, struct mg_http_message *hm);
+void handle_usb_advance(struct mg_connection *c, struct mg_http_message *hm);
 
 #ifdef __cplusplus
 }
