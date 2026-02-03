@@ -2107,3 +2107,395 @@ void handle_apn_clear(struct mg_connection *c, struct mg_http_message *hm) {
         HTTP_ERROR(c, 500, "清除APN配置失败");
     }
 }
+
+/* ==================== Rathole 内网穿透 API ==================== */
+#include "system/rathole.h"
+
+/* GET /api/rathole/config - 获取Rathole配置 */
+void handle_rathole_config_get(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    RatholeConfig config;
+    
+    if (rathole_get_config(&config) != 0) {
+        HTTP_ERROR(c, 500, "获取配置失败");
+        return;
+    }
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_key_obj_open(j, "data");
+    json_add_str(j, "server_addr", config.server_addr);
+    json_add_int(j, "auto_start", config.auto_start);
+    json_add_int(j, "enabled", config.enabled);
+    json_obj_close(j);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+}
+
+/* POST /api/rathole/config - 设置Rathole配置 */
+void handle_rathole_config_set(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+    
+    char *server_addr = mg_json_get_str(hm->body, "$.server_addr");
+    long auto_start = mg_json_get_long(hm->body, "$.auto_start", 0);
+    long enabled = mg_json_get_long(hm->body, "$.enabled", 0);
+    
+    if (!server_addr || strlen(server_addr) == 0) {
+        if (server_addr) free(server_addr);
+        HTTP_ERROR(c, 400, "服务器地址不能为空");
+        return;
+    }
+    
+    if (rathole_set_config(server_addr, (int)auto_start, (int)enabled) == 0) {
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"配置保存成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "配置保存失败");
+    }
+    
+    free(server_addr);
+}
+
+/* POST /api/rathole/autostart - 单独设置开机自启动 */
+void handle_rathole_autostart(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+    
+    long auto_start = mg_json_get_long(hm->body, "$.auto_start", -1);
+    
+    if (auto_start < 0) {
+        HTTP_ERROR(c, 400, "请提供 auto_start 参数");
+        return;
+    }
+    
+    /* 获取当前配置 */
+    RatholeConfig config;
+    rathole_get_config(&config);
+    
+    /* 只更新 auto_start，但如果开启自启动则必须同时启用服务 */
+    int enabled = config.enabled;
+    if (auto_start == 1) {
+        enabled = 1;  /* 开启自启动时必须同时启用服务 */
+    }
+    
+    if (rathole_set_config(config.server_addr, (int)auto_start, enabled) == 0) {
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"自启动设置成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "自启动设置失败");
+    }
+}
+
+/* GET /api/rathole/services - 获取服务列表 */
+void handle_rathole_services_list(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    RatholeService services[RATHOLE_MAX_SERVICES];
+    int count = rathole_service_list(services, RATHOLE_MAX_SERVICES);
+    
+    if (count < 0) {
+        HTTP_ERROR(c, 500, "获取服务列表失败");
+        return;
+    }
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_arr_open(j, "data");
+    
+    for (int i = 0; i < count; i++) {
+        json_arr_obj_open(j);
+        json_add_int(j, "id", services[i].id);
+        json_add_str(j, "name", services[i].name);
+        json_add_str(j, "token", services[i].token);
+        json_add_str(j, "local_addr", services[i].local_addr);
+        json_add_int(j, "enabled", services[i].enabled);
+        json_add_long(j, "created_at", (long)services[i].created_at);
+        json_obj_close(j);
+    }
+    
+    json_arr_close(j);
+    json_add_int(j, "count", count);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+}
+
+/* POST /api/rathole/services - 添加服务 */
+void handle_rathole_service_add(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+    
+    char *name = mg_json_get_str(hm->body, "$.name");
+    char *token = mg_json_get_str(hm->body, "$.token");
+    char *local_addr = mg_json_get_str(hm->body, "$.local_addr");
+    
+    if (!name || strlen(name) == 0 ||
+        !token || strlen(token) == 0 ||
+        !local_addr || strlen(local_addr) == 0) {
+        if (name) free(name);
+        if (token) free(token);
+        if (local_addr) free(local_addr);
+        HTTP_ERROR(c, 400, "服务名称、Token和本地地址不能为空");
+        return;
+    }
+    
+    if (rathole_service_add(name, token, local_addr) == 0) {
+        /* 如果正在运行，自动重启以应用新配置 */
+        if (rathole_get_status(NULL) == 1) {
+            rathole_restart();
+        }
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"服务添加成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "服务添加失败，名称可能已存在");
+    }
+    
+    free(name);
+    free(token);
+    free(local_addr);
+}
+
+/* PUT /api/rathole/services/:id - 更新服务 */
+void handle_rathole_service_update(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_ANY(c, hm);
+    HTTP_HANDLE_OPTIONS(c, hm);
+    
+    if (!http_is_method(hm, "PUT")) {
+        http_method_error(c);
+        return;
+    }
+    
+    /* 从URL提取ID */
+    char id_str[16] = {0};
+    if (sscanf(hm->uri.buf, "/api/rathole/services/%15s", id_str) != 1) {
+        HTTP_ERROR(c, 400, "无效的服务ID");
+        return;
+    }
+    
+    int id = atoi(id_str);
+    
+    char *name = mg_json_get_str(hm->body, "$.name");
+    char *token = mg_json_get_str(hm->body, "$.token");
+    char *local_addr = mg_json_get_str(hm->body, "$.local_addr");
+    long enabled = mg_json_get_long(hm->body, "$.enabled", 1);
+    
+    if (!name || strlen(name) == 0 ||
+        !token || strlen(token) == 0 ||
+        !local_addr || strlen(local_addr) == 0) {
+        if (name) free(name);
+        if (token) free(token);
+        if (local_addr) free(local_addr);
+        HTTP_ERROR(c, 400, "服务名称、Token和本地地址不能为空");
+        return;
+    }
+    
+    if (rathole_service_update(id, name, token, local_addr, (int)enabled) == 0) {
+        /* 如果正在运行，自动重启以应用新配置 */
+        if (rathole_get_status(NULL) == 1) {
+            rathole_restart();
+        }
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"服务更新成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "服务更新失败");
+    }
+    
+    free(name);
+    free(token);
+    free(local_addr);
+}
+
+/* DELETE /api/rathole/services/:id - 删除服务 */
+void handle_rathole_service_delete(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_DELETE(c, hm);
+    
+    /* 从URL提取ID */
+    char id_str[16] = {0};
+    if (sscanf(hm->uri.buf, "/api/rathole/services/%15s", id_str) != 1) {
+        HTTP_ERROR(c, 400, "无效的服务ID");
+        return;
+    }
+    
+    int id = atoi(id_str);
+    
+    if (rathole_service_delete(id) == 0) {
+        /* 如果正在运行，自动重启以应用新配置 */
+        if (rathole_get_status(NULL) == 1) {
+            rathole_restart();
+        }
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"服务删除成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "服务删除失败");
+    }
+}
+
+/* POST /api/rathole/start - 启动Rathole服务 */
+void handle_rathole_start(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+    
+    if (rathole_start() == 0) {
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"服务启动成功\"}");
+    } else {
+        HTTP_ERROR(c, 500, "服务启动失败，请检查日志");
+    }
+}
+
+/* POST /api/rathole/stop - 停止Rathole服务 */
+void handle_rathole_stop(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_POST(c, hm);
+    
+    if (rathole_stop() == 0) {
+        HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"服务已停止\"}");
+    } else {
+        HTTP_ERROR(c, 500, "服务停止失败");
+    }
+}
+
+/* GET /api/rathole/status - 获取Rathole状态 */
+void handle_rathole_status(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    RatholeStatus status;
+    int running = rathole_get_status(&status);
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_key_obj_open(j, "data");
+    json_add_int(j, "running", running);
+    json_add_int(j, "pid", status.pid);
+    json_add_int(j, "service_count", status.service_count);
+    json_add_str(j, "last_error", status.last_error);
+    json_obj_close(j);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+}
+
+/* GET /api/rathole/logs - 获取Rathole日志 */
+void handle_rathole_logs(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    /* 从查询参数获取行数，默认100 */
+    char lines_str[16] = {0};
+    struct mg_str lines_param = mg_http_var(hm->query, mg_str("lines"));
+    if (lines_param.len > 0 && lines_param.len < sizeof(lines_str)) {
+        memcpy(lines_str, lines_param.buf, lines_param.len);
+    }
+    int max_lines = (strlen(lines_str) > 0) ? atoi(lines_str) : 100;
+    if (max_lines <= 0 || max_lines > 1000) {
+        max_lines = 100;
+    }
+    
+    char *logs = malloc(64 * 1024);
+    if (!logs) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    
+    int len = rathole_get_logs(logs, 64 * 1024, max_lines);
+    if (len < 0) {
+        free(logs);
+        HTTP_ERROR(c, 500, "读取日志失败");
+        return;
+    }
+    
+    /* 使用mongoose MG_ESC进行JSON转义 */
+    char *escaped = malloc(128 * 1024);
+    if (!escaped) {
+        free(logs);
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    mg_snprintf(escaped, 128 * 1024, "%m", MG_ESC(logs));
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_key_obj_open(j, "data");
+    json_add_raw(j, "logs", escaped);
+    json_add_int(j, "lines", max_lines);
+    json_obj_close(j);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+    
+    free(logs);
+    free(escaped);
+}
+
+/* GET /api/rathole/server-config - 生成服务端配置 */
+void handle_rathole_server_config(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    RatholeConfig config;
+    RatholeService services[RATHOLE_MAX_SERVICES];
+    
+    if (rathole_get_config(&config) != 0) {
+        HTTP_ERROR(c, 500, "获取配置失败");
+        return;
+    }
+    
+    int count = rathole_service_list(services, RATHOLE_MAX_SERVICES);
+    if (count < 0) count = 0;
+    
+    /* 从 server_addr 提取端口号 */
+    char server_port[16] = "2333";
+    const char *colon = strrchr(config.server_addr, ':');
+    if (colon && strlen(colon + 1) > 0) {
+        strncpy(server_port, colon + 1, sizeof(server_port) - 1);
+    }
+    
+    /* 生成 TOML 配置 */
+    char *toml = malloc(16 * 1024);
+    if (!toml) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    
+    int offset = 0;
+    offset += snprintf(toml + offset, 16 * 1024 - offset,
+        "# Rathole 服务端配置\n"
+        "# 自动生成 - 请部署到公网服务器\n"
+        "# 下载地址: https://github.com/rathole-org/rathole/releases/tag/v0.5.0\n\n"
+        "[server]\n"
+        "# 监听端口用于客户端连接\n"
+        "bind_addr = \"[::]:%s\"\n\n",
+        server_port);
+    
+    /* 生成每个服务的配置 */
+    int base_port = 9000;  /* 对外暴露端口从9000开始 */
+    for (int i = 0; i < count && offset < 15 * 1024; i++) {
+        if (!services[i].enabled) continue;
+        
+        offset += snprintf(toml + offset, 16 * 1024 - offset,
+            "[server.services.%s]\n"
+            "token = \"%s\"\n"
+            "bind_addr = \"[::]:%d\"  # 对外暴露端口\n\n",
+            services[i].name,
+            services[i].token,
+            base_port + i);
+    }
+    
+    /* JSON 转义 TOML 内容 */
+    char *escaped = malloc(32 * 1024);
+    if (!escaped) {
+        free(toml);
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    mg_snprintf(escaped, 32 * 1024, "%m", MG_ESC(toml));
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_key_obj_open(j, "data");
+    json_add_raw(j, "config", escaped);
+    json_add_int(j, "service_count", count);
+    json_add_str(j, "download_url", "https://github.com/rathole-org/rathole/releases/tag/v0.5.0");
+    json_obj_close(j);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+    
+    free(toml);
+    free(escaped);
+}

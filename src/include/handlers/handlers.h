@@ -90,6 +90,20 @@ void handle_auth_logout(struct mg_connection *c, struct mg_http_message *hm);
 void handle_auth_password(struct mg_connection *c, struct mg_http_message *hm);
 void handle_auth_status(struct mg_connection *c, struct mg_http_message *hm);
 
+/* Rathole 内网穿透 API */
+void handle_rathole_config_get(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_config_set(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_services_list(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_service_add(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_service_update(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_service_delete(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_start(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_stop(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_status(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_logs(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_server_config(struct mg_connection *c, struct mg_http_message *hm);
+void handle_rathole_autostart(struct mg_connection *c, struct mg_http_message *hm);
+
 #ifdef __cplusplus
 }
 #endif

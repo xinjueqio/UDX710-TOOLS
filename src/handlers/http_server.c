@@ -23,6 +23,8 @@
 #include "auth.h"
 #include "apn.h"
 #include "netif.h"
+#include "system/rathole.h"
+#include "system/phone_case.h"
 
 /* 嵌入式文件系统声明 (packed_fs.c) */
 extern int serve_packed_file(struct mg_connection *c, struct mg_http_message *hm);
@@ -384,6 +386,50 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
                 HTTP_ERROR(c, 405, "Method not allowed");
             }
         }
+        /* Rathole 内网穿透 API */
+        else if (mg_match(hm->uri, mg_str("/api/rathole/config"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+                handle_rathole_config_get(c, hm);
+            } else {
+                handle_rathole_config_set(c, hm);
+            }
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/services"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
+                handle_rathole_services_list(c, hm);
+            } else {
+                handle_rathole_service_add(c, hm);
+            }
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/services/*"), NULL)) {
+            if (hm->method.len == 3 && memcmp(hm->method.buf, "PUT", 3) == 0) {
+                handle_rathole_service_update(c, hm);
+            } else {
+                handle_rathole_service_delete(c, hm);
+            }
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/start"), NULL)) {
+            handle_rathole_start(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/stop"), NULL)) {
+            handle_rathole_stop(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/status"), NULL)) {
+            handle_rathole_status(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/logs"), NULL)) {
+            handle_rathole_logs(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/server-config"), NULL)) {
+            handle_rathole_server_config(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/rathole/autostart"), NULL)) {
+            handle_rathole_autostart(c, hm);
+        }
+        /* 手机壳模式 API */
+        else if (mg_match(hm->uri, mg_str("/api/phone-case"), NULL)) {
+            handle_phone_case(c, hm);
+        }
         /* 未知 API 路由 */
         else {
             HTTP_ERROR(c, 404, "Endpoint not found");
@@ -421,11 +467,19 @@ int http_server_start(const char *port) {
         printf("警告: APN模块初始化失败\n");
     }
 
+    /* 初始化Rathole模块 */
+    if (rathole_init("6677.db") != 0) {
+        printf("警告: Rathole模块初始化失败\n");
+    }
+
+    /* 初始化手机壳模式模块 */
+    phone_case_init();
+
     /* 初始化 mongoose */
     mg_mgr_init(&g_mgr);
 
-    /* 构建监听地址 */
-    snprintf(listen_addr, sizeof(listen_addr), "http://0.0.0.0:%s", port);
+    /* 构建监听地址 - 使用 [::] 同时支持 IPv4 和 IPv6 */
+    snprintf(listen_addr, sizeof(listen_addr), "http://[::]:%s", port);
 
     /* 创建 HTTP 监听器 */
     if (mg_http_listen(&g_mgr, listen_addr, http_handler, NULL) == NULL) {

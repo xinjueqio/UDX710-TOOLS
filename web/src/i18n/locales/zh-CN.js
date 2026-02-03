@@ -1,4 +1,4 @@
-export default {
+﻿export default {
   // 通用文本
   common: {
     refresh: '刷新',
@@ -38,6 +38,7 @@ export default {
     upload: '上传',
     download: '下载',
     lastUpdate: '最后更新',
+    inputToConfirm: '请输入 "{0}" 以确认',
     status: '状态',
     action: '操作',
     details: '详情',
@@ -62,6 +63,7 @@ export default {
     sms: '短信管理',
     traffic: '流量统计',
     battery: '充电控制',
+    rathole: '内网穿透',
     update: '系统更新',
     at: 'AT调试',
     terminal: 'Web终端',
@@ -221,6 +223,13 @@ export default {
     applyFailed: '应用模板失败',
     deleteFailed: '删除失败',
     autoStart: '开机自启',
+    autoStartDesc: '设备启动时自动运行内网穿透',
+    autoStartEnabled: '已开启开机自启动',
+    autoStartDisabled: '已关闭开机自启动',
+    serverConfig: '服务器配置',
+    autoStartDesc: '设备启动时自动运行内网穿透',
+    autoStartEnabled: '已开启开机自启动',
+    autoStartDisabled: '已关闭开机自启动',
     autoStartDesc: '系统启动时自动应用此模板',
     configSaved: '配置保存成功',
     edit: '编辑',
@@ -547,6 +556,16 @@ export default {
     confirmReboot: '确定要重启设备吗？此操作不可撤销。',
     confirmShutdown: '确定要关闭设备吗？此操作不可撤销。',
     operationWarning: '操作将立即执行，请确保重要数据已保存',
+    phoneCaseMode: '手机壳模式',
+    phoneCaseModeDesc: '修复手机壳USB无网问题（非手机壳勿碰！！！）',
+    phoneCaseModeEnabled: '手机壳模式已开启',
+    phoneCaseModeDisabled: '手机壳模式已关闭',
+    phoneCaseModeWarning: '⚠️ 非手机壳勿碰！！！\n\n此功能仅适用于手机壳使用场景，非手机壳点开后可能导致：\n• USB断网、IP不分配\n• 网络功能异常\n• 可能需要重新刷机才能恢复！\n\n确定要继续吗？',
+    dangerWarning: '危险操作警告',
+    phoneCaseVerification: '本人已知风险自愿承担',
+    inputToConfirm: '请输入',
+    toConfirm: '以确认：',
+    inputVerificationError: '请输入正确的确认文字',
     scheduledReboot: '定时重启',
     scheduledRebootDesc: '设置自动重启时间',
     enableScheduledReboot: '启用定时重启',
@@ -945,5 +964,160 @@ export default {
     noInterfaces: '未检测到网络接口',
     showDetails: '显示详情',
     hideDetails: '隐藏详情'
+  },
+
+  // Rathole 内网穿透
+  rathole: {
+    title: '内网穿透',
+    description: '通过 Rathole 将内网服务暴露到公网',
+    serverAddr: '服务器地址',
+    serverAddrPlaceholder: 'your-server.com:2333',
+    autoStart: '开机自启',
+    autoStartDesc: '设备启动时自动运行内网穿透',
+    autoStartEnabled: '已开启开机自启动',
+    autoStartDisabled: '已关闭开机自启动',
+    serverConfig: '服务器配置',
+    serviceList: '转发服务',
+    addService: '添加服务',
+    editService: '编辑服务',
+    serviceName: '服务名称',
+    serviceNamePlaceholder: '如：web、ssh、6677',
+    token: '认证 Token',
+    tokenPlaceholder: '与服务端一致的密钥',
+    localAddr: '本地地址',
+    localAddrPlaceholder: '127.0.0.1:80',
+    enabled: '启用服务',
+    quickActions: '快捷操作',
+    start: '启动',
+    stop: '停止',
+    restart: '重启',
+    running: '运行中',
+    stopped: '已停止',
+    status: '运行状态',
+    serviceCount: '个服务',
+    logs: '运行日志',
+    refreshLogs: '刷新日志',
+    clearLogs: '清空',
+    noLogs: '暂无日志',
+    saveConfig: '保存配置',
+    saveAndRestart: '保存并重启',
+    configSaved: '配置保存成功',
+    startSuccess: '服务启动成功',
+    stopSuccess: '服务已停止',
+    startFailed: '启动失败',
+    stopFailed: '停止失败',
+    confirmStop: '确定要停止内网穿透服务吗？',
+    confirmDelete: '确定要删除此服务吗？',
+    serviceAdded: '服务添加成功',
+    serviceUpdated: '服务更新成功',
+    serviceDeleted: '服务删除成功',
+    nameRequired: '请输入服务名称',
+    tokenRequired: '请输入认证Token',
+    localAddrRequired: '请输入本地地址',
+    serverAddrRequired: '请输入服务器地址',
+    tips: '使用说明',
+    tip1: '服务器地址填写 Rathole 服务端的 IP 和端口',
+    tip2: 'Token 必须与服务端配置保持一致',
+    tip3: '添加/删除服务后会自动重启生效',
+    noData: '暂无转发服务',
+
+    // 使用指南
+    guide: '使用指南',
+    guideTitle: 'Rathole 使用指南',
+
+    // 功能介绍
+    guideIntroTitle: '📌 功能介绍',
+    guideIntroDesc: 'Rathole 是一款轻量级内网穿透工具，可以将本地服务映射到公网服务器，让你在外面也能访问家里的设备。',
+    guideIntroExample: '例如：本设备运行在 80 端口的管理后台，可以通过 Rathole 映射到公网服务器，这样你在外面用手机流量也能访问管理后台。',
+
+    // 下载
+    guideDownloadTitle: '📥 第一步：下载 Rathole',
+    guideDownloadDesc: '访问下面的下载页面，根据你的服务器架构选择对应版本：',
+    guideDownloadLink: '点击前往 GitHub 下载',
+    guideDownloadX86: 'x86_64 服务器（阿里云/腾讯云/华为云等普通云服务器）',
+    guideDownloadARM: 'ARM64 服务器（树莓派、ARM 架构的云服务器）',
+    guideDownloadTip: '不知道选哪个？大部分云服务器选 x86_64 版本就对了！',
+
+    // 服务端配置
+    guideServerTitle: '⚙️ 第二步：服务端配置',
+    guideServerDesc: '点击「导出服务端配置」按钮获取自动生成的配置文件，保存到公网服务器上。',
+
+    // 启动服务端
+    guideStartTitle: '🚀 第三步：启动服务端',
+    guideStartDesc: '在服务器上运行以下命令启动 Rathole：',
+
+    // 端口放行
+    guideFirewallTitle: '🔓 第四步：放行防火墙端口（非常重要！）',
+    guideFirewallDesc: '这一步很多人会忘记，不放行端口是连不上的！必须同时放行以下两个地方：',
+    guideFirewallCloud: '① 云服务商控制台（必须）',
+    guideFirewallTip1: '登录阿里云/腾讯云控制台 → 安全组规则 → 添加入站规则',
+    guideFirewallTip2: '放行 TCP 端口：控制端口（如 2333）+ 服务端口（如 9000、9001）',
+    guideFirewallTip3: '来源选择 0.0.0.0/0 允许所有 IP 访问',
+    guideFirewallBt: '② 宝塔面板用户（如果装了宝塔）',
+    guideFirewallBtTip: '宝塔面板 → 安全 → 添加端口规则，放行同样的端口',
+    guideFirewallShell: '或者用命令行放行（适用于 CentOS/Ubuntu）：',
+
+    // 一键脚本
+    autoSetupScript: '一键安装脚本',
+    scriptUsageTitle: '使用方法',
+    scriptUsageDesc: '在服务器上根据提示创建一个 .sh 文件，粘贴下方内容并运行，即可完成所有配置。',
+    guideOneClick: '✨ 推荐：一键安装',
+    guideOneClickTip: '在主界面点击【导出服务端配置】，可以获取一键安装脚本，自动完成下载、配置和启动。',
+    guideOneClickNote: '(包含：自动下载 + 配置文件 + Systemd服务 + 防火墙设置)',
+    guideOneClickSteps: '使用步骤：\n1. 点击主界面右上角的【导出服务端配置】\n2. 保持【一键安装脚本】选项卡选中\n3. 点击【复制】按钮\n4. 在服务器终端粘贴并运行即可',
+    exportWarning: '⚠️ 注意：导出前请务必【配置服务器地址】并【添加转发服务】。建议【启动一次服务】以生成最新配置。',
+
+    // 自启动配置
+    guideAutoStartTitle: '⏰ 第五步：配置开机自启（推荐）',
+    guideAutoStartDesc: '使用 systemd 让 Rathole 开机自动启动，服务器重启后也能自动运行：',
+    guideAutoStartStep1: '① 创建服务文件',
+    guideAutoStartService: '复制以下内容到新建的文件中（注意修改路径）：',
+    guideAutoStartStep2: '② 启用并启动服务',
+    guideAutoStartStep3: '③ 查看运行状态',
+
+
+    // 更新配置说明
+    guideUpdateTitle: '🔄 配置更新操作',
+    guideUpdateDesc: '当你在客户端添加/修改/删除服务后，服务端配置需要同步更新：',
+    guideUpdateStep1: '① 在客户端页面点击「导出配置」',
+    guideUpdateStep2: '② 复制新的服务端配置内容',
+    guideUpdateStep3: '③ 登录服务器，编辑配置文件',
+    guideUpdateStep3Cmd: 'nano /root/rathole/server.toml',
+    guideUpdateStep4: '④ 粘贴新内容并保存（Ctrl+O 保存，Ctrl+X 退出）',
+    guideUpdateStep5: '⑤ 重启 Rathole 服务',
+    guideUpdateStep5Cmd: 'sudo systemctl restart rathole',
+    guideUpdateStep6: '⑥ 查看服务状态确认正常',
+    guideUpdateStep6Cmd: 'sudo systemctl status rathole',
+    guideUpdateTip: '💡 提示：每次修改客户端服务配置后，都需要同步更新服务端的 server.toml 文件',
+
+    // 管理脚本说明
+    guideScriptTitle: '🛠️ 管理脚本（可选）',
+    guideScriptDesc: '设备上提供了 rathole.sh 管理脚本，可以快速操作：',
+    guideScriptStart: './rathole.sh start   # 启动服务',
+    guideScriptStop: './rathole.sh stop    # 停止服务',
+    guideScriptRestart: './rathole.sh restart # 重启服务',
+    guideScriptStatus: './rathole.sh status  # 查看状态',
+    guideScriptLogs: './rathole.sh logs    # 查看日志',
+    guideScriptEnable: './rathole.sh enable  # 开启自启动',
+    guideScriptDisable: './rathole.sh disable # 关闭自启动',
+
+    // 客户端配置
+    guideClientTitle: '📱 第六步：客户端配置',
+    guideClientDesc: '在本页面配置服务器地址（公网服务器IP:2333）和转发服务，点击「启动」即可连接。',
+
+    // 重要提示
+    guideWarningTitle: '⚠️ 重要提示',
+    guideWarningToken: 'Token 必须和服务端完全一致，区分大小写',
+    guideWarningFirewall: '记得同时放行云控制台和宝塔的防火墙端口',
+    guideWarningSystemd: '建议使用 systemd 管理进程，防止进程意外退出',
+    guideWarningNoChinese: '所有配置项不能包含中文或特殊字符',
+
+    // 导出配置
+    exportConfig: '导出服务端配置',
+    serverConfigTitle: '服务端配置文件',
+    serverConfigDesc: '将以下内容保存为 server.toml 文件，上传到公网服务器上：',
+    configCopied: '配置已复制到剪贴板'
   }
 }
+
+

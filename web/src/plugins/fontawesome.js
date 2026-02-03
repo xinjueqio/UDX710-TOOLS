@@ -187,7 +187,11 @@ import {
   // NetworkInterface.vue 网络接口图标
   faEthernet,
   faArrowsRotate,
-  faMobile
+  faMobile,
+
+  // RatholeManager.vue
+  faExchangeAlt,
+  faList
 } from '@fortawesome/free-solid-svg-icons'
 
 // 注册所有图标到库
@@ -328,7 +332,9 @@ library.add(
   faFolderOpen,
   faEthernet,
   faArrowsRotate,
-  faMobile
+  faMobile,
+  faExchangeAlt,
+  faList
 )
 
 // 启用 DOM 监视器，自动将 <i class="fas fa-xxx"> 转换为 SVG

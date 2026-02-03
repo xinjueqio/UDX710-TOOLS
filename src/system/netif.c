@@ -363,9 +363,8 @@ int netif_stop_monitor_process(const char *ifname) {
     
     /* 清理 (保留并重新初始化锁) */
     pthread_mutex_t temp_lock = mon->lock;
+    pthread_mutex_destroy(&temp_lock);  /* 先销毁再重新初始化，避免资源泄露 */
     memset(mon, 0, sizeof(NetifMonitor));
-    mon->lock = temp_lock;
-    /* 如果锁已经被清零过，需要重新初始化 */
     pthread_mutex_init(&mon->lock, NULL);
     pthread_mutex_unlock(&g_monitors_lock);
     

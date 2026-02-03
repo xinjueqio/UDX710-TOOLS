@@ -15,6 +15,7 @@ import UsbMode from './components/UsbMode.vue'
 import ApnConfig from './components/ApnConfig.vue'
 import PluginStore from './components/PluginStore.vue'
 import NetworkInterface from './components/NetworkInterface.vue'
+import RatholeManager from './components/RatholeManager.vue'
 import GlobalToast from './components/GlobalToast.vue'
 import GlobalConfirm from './components/GlobalConfirm.vue'
 import UpdateNotification from './components/UpdateNotification.vue'
@@ -242,6 +243,7 @@ const menuItems = [
   { id: 'sms', labelKey: 'menu.sms', icon: 'fa-envelope', color: 'from-emerald-500 to-teal-400' },
   { id: 'traffic', labelKey: 'menu.traffic', icon: 'fa-chart-area', color: 'from-green-500 to-emerald-400' },
   { id: 'battery', labelKey: 'menu.battery', icon: 'fa-battery-half', color: 'from-yellow-500 to-amber-400' },
+  { id: 'rathole', labelKey: 'menu.rathole', icon: 'fa-shield-alt', color: 'from-indigo-500 to-violet-400' },
   { id: 'update', labelKey: 'menu.update', icon: 'fa-cloud-download-alt', color: 'from-violet-500 to-purple-400' },
   { id: 'at', labelKey: 'menu.at', icon: 'fa-terminal', color: 'from-cyan-500 to-teal-400' },
   { id: 'terminal', labelKey: 'menu.terminal', icon: 'fa-desktop', color: 'from-slate-500 to-gray-400' },
@@ -606,6 +608,7 @@ onUnmounted(() => {
           <SmsManager v-else-if="activeMenu === 'sms'" key="sms" />
           <TrafficStats v-else-if="activeMenu === 'traffic'" key="traffic" />
           <BatteryManager v-else-if="activeMenu === 'battery'" key="battery" />
+          <RatholeManager v-else-if="activeMenu === 'rathole'" key="rathole" />
           <SystemUpdate v-else-if="activeMenu === 'update'" key="update" />
           <ATDebug v-else-if="activeMenu === 'at'" key="at" />
           <WebTerminal v-else-if="activeMenu === 'terminal'" key="terminal" />
