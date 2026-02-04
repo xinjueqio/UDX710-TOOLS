@@ -76,7 +76,18 @@
 
 ### 系统功能
 - **系统监控**：CPU、内存、温度监控
-- **短信管理**：收发短信
+- **短信管理**：收发短信，支持Webhook转发
+- **IPv6端口转发**：完整的IPv6端口转发服务
+  - 本地IPv4端口映射到IPv6地址
+  - 自动检测IPv6地址
+  - IPv6地址变化时Webhook通知
+  - 支持开机自启动
+  - 发送日志带响应追踪
+- **内网穿透（Rathole）**：内置Rathole客户端实现NAT穿透
+  - 多服务配置
+  - 自动生成服务端配置
+  - 实时连接状态
+  - 支持开机自启动
 - **LED控制**：管理设备LED指示灯
 - **飞行模式**：切换飞行模式
 - **电源管理**：电池状态、充电控制
@@ -200,6 +211,14 @@ make
 | `/api/plugins` | GET/POST/DELETE | 插件管理 |
 | `/api/scripts` | GET/POST/PUT/DELETE | 脚本管理 |
 | `/api/shell` | POST | 执行Shell命令 |
+| `/api/ipv6-proxy/config` | GET/POST | IPv6代理配置 |
+| `/api/ipv6-proxy/rules` | GET/POST/DELETE | IPv6转发规则 |
+| `/api/ipv6-proxy/status` | GET | IPv6代理状态 |
+| `/api/ipv6-proxy/send-logs` | GET | IPv6发送日志 |
+| `/api/rathole/config` | GET/POST | Rathole配置 |
+| `/api/rathole/services` | GET/POST/DELETE | Rathole服务管理 |
+| `/api/rathole/status` | GET | Rathole连接状态 |
+| `/api/rathole/logs` | GET | Rathole日志 |
 | `/api/update/check` | GET | 检查更新 |
 | `/api/update/install` | POST | 安装更新 |
 | `/api/factory-reset` | POST | 恢复出厂设置 |

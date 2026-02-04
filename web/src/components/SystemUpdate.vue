@@ -81,7 +81,9 @@ function clearFile() {
 async function fetchCurrentVersion() {
   try {
     const res = await api.get('/api/update/version')
-    if (res.version) currentVersion.value = res.version
+    if (res.ok && res.data && res.data.version) {
+      currentVersion.value = res.data.version
+    }
   } catch (e) {
     console.error('Failed to get version:', e)
   }
@@ -97,15 +99,20 @@ async function checkUpdate() {
     const res = await api.get('/api/update/check')
     addLog(t('update.checkingLatest'))
     
-    if (res.has_update) {
-      latestVersion.value = res.latest_version
+    if (!res.ok || !res.data) {
+      throw new Error('获取更新信息失败')
+    }
+    
+    const data = res.data
+    if (data.has_update) {
+      latestVersion.value = data.latest_version
       updateAvailable.value = true
-      updateUrl.value = res.url || ''
-      addLog(t('update.foundNewVersion') + ': v' + res.latest_version)
-      if (res.changelog) addLog(t('update.updateContent') + ': ' + res.changelog)
-      success(t('update.foundNewVersion') + ' v' + res.latest_version)
+      updateUrl.value = data.url || ''
+      addLog(t('update.foundNewVersion') + ': v' + data.latest_version)
+      if (data.changelog) addLog(t('update.updateContent') + ': ' + data.changelog)
+      success(t('update.foundNewVersion') + ' v' + data.latest_version)
     } else {
-      latestVersion.value = res.current_version
+      latestVersion.value = data.current_version
       updateAvailable.value = false
       addLog(t('update.alreadyLatest'))
       success(t('update.alreadyLatest'))
@@ -223,7 +230,11 @@ onMounted(() => {
         </div>
         <div>
           <h3 class="text-slate-900 dark:text-white font-semibold text-sm sm:text-base">{{ $t('update.title') }}</h3>
-          <p class="text-slate-500 dark:text-white/50 text-xs sm:text-sm">{{ $t('update.currentVersion') }}: v{{ currentVersion }}</p>
+          <p class="text-slate-500 dark:text-white/50 text-xs sm:text-sm">
+            {{ $t('update.currentVersion') }}: 
+            <span v-if="currentVersion" class="font-mono text-emerald-600 dark:text-emerald-400">v{{ currentVersion }}</span>
+            <span v-else class="text-slate-400 dark:text-white/30">{{ $t('common.loading') || '加载中...' }}</span>
+          </p>
         </div>
       </div>
       <button @click="checkUpdate" :disabled="checking || uploading || installing"

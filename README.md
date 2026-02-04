@@ -78,7 +78,18 @@ Lightweight, efficient, and perfect for resource-constrained embedded devices!
 
 ### System Features
 - **System Monitor**: CPU, memory, temperature monitoring (IMEI/ICCID privacy masking)
-- **SMS Management**: Send and receive SMS messages
+- **SMS Management**: Send and receive SMS messages, Webhook forwarding support
+- **IPv6 Port Forwarding**: Full IPv6 port forwarding service
+  - Map local IPv4 ports to IPv6 addresses
+  - Automatic IPv6 address detection
+  - Webhook notification for IPv6 address changes
+  - Auto-start on boot support
+  - Send logs with response tracking
+- **Intranet Penetration (Rathole)**: Built-in Rathole client for NAT traversal
+  - Multi-service configuration
+  - Auto-generate server config
+  - Real-time connection status
+  - Auto-start on boot support
 - **LED Control**: Manage device LED indicators
 - **Airplane Mode**: Toggle airplane mode
 - **Power Management**: Battery status, charging control
@@ -202,6 +213,14 @@ The backend uses cross-compilation targeting aarch64-linux-gnu. Ensure your tool
 | `/api/plugins` | GET/POST/DELETE | Plugin management |
 | `/api/scripts` | GET/POST/PUT/DELETE | Script management |
 | `/api/shell` | POST | Execute Shell commands |
+| `/api/ipv6-proxy/config` | GET/POST | IPv6 proxy configuration |
+| `/api/ipv6-proxy/rules` | GET/POST/DELETE | IPv6 forwarding rules |
+| `/api/ipv6-proxy/status` | GET | IPv6 proxy status |
+| `/api/ipv6-proxy/send-logs` | GET | IPv6 send logs |
+| `/api/rathole/config` | GET/POST | Rathole configuration |
+| `/api/rathole/services` | GET/POST/DELETE | Rathole service management |
+| `/api/rathole/status` | GET | Rathole connection status |
+| `/api/rathole/logs` | GET | Rathole logs |
 | `/api/update/check` | GET | Check for updates |
 | `/api/update/install` | POST | Install update |
 | `/api/factory-reset` | POST | Factory reset |

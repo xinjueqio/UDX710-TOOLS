@@ -29,6 +29,16 @@ static WebhookConfig g_webhook_config = {0};
 static int g_max_sms_count = DEFAULT_MAX_SMS_COUNT;
 static int g_max_sent_count = DEFAULT_MAX_SENT_COUNT;
 
+/* Webhook发送日志（内存存储，重启后清空） */
+#define MAX_WEBHOOK_LOGS 100
+static SmsWebhookLog g_webhook_logs[MAX_WEBHOOK_LOGS];
+static int g_webhook_log_count = 0;
+static int g_webhook_log_id = 0;
+static pthread_mutex_t g_webhook_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* 添加Webhook日志 */
+static void add_webhook_log(const char *sender, const char *request, const char *response, int result);
+
 /* 前向声明 */
 static void on_incoming_message(GDBusConnection *conn, const gchar *sender_name,
     const gchar *object_path, const gchar *interface_name, const gchar *signal_name,
@@ -245,17 +255,21 @@ static void on_incoming_message(GDBusConnection *conn, const gchar *sender_name,
             send_webhook_notification(&msg);
         }
     }
-    
     g_variant_unref(props);
 }
 
 /* 发送Webhook通知 */
-static void send_webhook_notification(const SmsMessage *msg) {
-    if (!g_webhook_config.enabled || strlen(g_webhook_config.url) == 0) {
+static void send_webhook_notification_ext(const SmsMessage *msg, int force) {
+    if (!force && (!g_webhook_config.enabled || strlen(g_webhook_config.url) == 0)) {
         return;
     }
     
-    printf("[SMS] 发送Webhook通知到: %s\n", g_webhook_config.url);
+    if (strlen(g_webhook_config.url) == 0) {
+        printf("[SMS] Webhook URL未配置\n");
+        return;
+    }
+    
+    printf("[SMS] 发送Webhook通知到: %s (force=%d)\n", g_webhook_config.url, force);
     
     /* 替换变量 */
     char body[4096];
@@ -298,6 +312,7 @@ static void send_webhook_notification(const SmsMessage *msg) {
         fclose(fp);
     } else {
         printf("[SMS] 无法创建临时文件\n");
+        add_webhook_log(msg->sender, body, "创建临时文件失败", 0);
         return;
     }
     
@@ -305,7 +320,7 @@ static void send_webhook_notification(const SmsMessage *msg) {
     char cmd[8192];
     char headers_part[1024] = "";
     
-    /* 解析自定义headers（格式：Header1: Value1\nHeader2: Value2） */
+    /* 解析自定义headers */
     if (strlen(g_webhook_config.headers) > 0) {
         char headers_copy[512];
         strncpy(headers_copy, g_webhook_config.headers, sizeof(headers_copy) - 1);
@@ -313,11 +328,9 @@ static void send_webhook_notification(const SmsMessage *msg) {
         
         char *line = strtok(headers_copy, "\n");
         while (line) {
-            /* 跳过空行 */
             while (*line == ' ' || *line == '\r') line++;
             if (strlen(line) > 0 && strchr(line, ':')) {
                 char header_arg[256];
-                /* 去除行尾的\r */
                 char *cr = strchr(line, '\r');
                 if (cr) *cr = '\0';
                 snprintf(header_arg, sizeof(header_arg), " -H '%s'", line);
@@ -327,20 +340,52 @@ static void send_webhook_notification(const SmsMessage *msg) {
         }
     }
     
-    /* 默认添加Content-Type（如果用户没有指定） */
-    /* 使用 sh -c 包装命令，确保 curl 完成后删除临时文件 */
+    /* 同步执行curl获取响应 */
     if (strstr(headers_part, "Content-Type") == NULL) {
         snprintf(cmd, sizeof(cmd),
-            "sh -c \"curl -s -X POST '%s' -H 'Content-Type: application/json'%s -d @%s; rm -f %s\" &",
-            g_webhook_config.url, headers_part, tmp_file, tmp_file);
+            "curl -s --max-time 10 -X POST '%s' -H 'Content-Type: application/json'%s -d @%s 2>&1",
+            g_webhook_config.url, headers_part, tmp_file);
     } else {
         snprintf(cmd, sizeof(cmd),
-            "sh -c \"curl -s -X POST '%s'%s -d @%s; rm -f %s\" &",
-            g_webhook_config.url, headers_part, tmp_file, tmp_file);
+            "curl -s --max-time 10 -X POST '%s'%s -d @%s 2>&1",
+            g_webhook_config.url, headers_part, tmp_file);
     }
     
     printf("[SMS] 执行: %s\n", cmd);
-    system(cmd);
+    
+    /* 使用popen捕获响应 */
+    char response[1024] = "";
+    FILE *pipe = popen(cmd, "r");
+    if (pipe) {
+        size_t total = 0;
+        char buf[256];
+        while (fgets(buf, sizeof(buf), pipe) && total < sizeof(response) - 1) {
+            size_t len = strlen(buf);
+            if (total + len < sizeof(response)) {
+                strcat(response, buf);
+                total += len;
+            }
+        }
+        pclose(pipe);
+    } else {
+        strncpy(response, "执行curl失败", sizeof(response) - 1);
+    }
+    
+    /* 删除临时文件 */
+    unlink(tmp_file);
+    
+    /* 判断是否成功 */
+    int result = (strlen(response) > 0 && strstr(response, "curl:") == NULL) ? 1 : 0;
+    
+    printf("[SMS] Webhook响应: %s\n", response);
+    
+    /* 记录日志 */
+    add_webhook_log(msg->sender, body, response, result);
+}
+
+/* 发送Webhook通知 */
+static void send_webhook_notification(const SmsMessage *msg) {
+    send_webhook_notification_ext(msg, 0);
 }
 
 /* 初始化短信模块 */
@@ -693,12 +738,13 @@ int sms_test_webhook(void) {
         .is_read = 0
     };
     
-    if (!g_webhook_config.enabled || strlen(g_webhook_config.url) == 0) {
-        printf("[SMS] Webhook未启用或URL为空\n");
+    if (strlen(g_webhook_config.url) == 0) {
+        printf("[SMS] Webhook URL为空\n");
         return -1;
     }
     
-    send_webhook_notification(&test_msg);
+    /* 测试时强制发送，无需检查enabled状态 */
+    send_webhook_notification_ext(&test_msg, 1);
     return 0;
 }
 
@@ -1019,3 +1065,115 @@ int sms_set_max_sent_count(int count) {
     return ret;
 }
 
+/* 添加Webhook发送日志（内存存储） */
+static void add_webhook_log(const char *sender, const char *request, const char *response, int result) {
+    pthread_mutex_lock(&g_webhook_log_mutex);
+    
+    /* 循环缓冲区 */
+    int idx = g_webhook_log_count % MAX_WEBHOOK_LOGS;
+    
+    g_webhook_logs[idx].id = ++g_webhook_log_id;
+    strncpy(g_webhook_logs[idx].sender, sender ? sender : "", sizeof(g_webhook_logs[idx].sender) - 1);
+    strncpy(g_webhook_logs[idx].request, request ? request : "", sizeof(g_webhook_logs[idx].request) - 1);
+    strncpy(g_webhook_logs[idx].response, response ? response : "", sizeof(g_webhook_logs[idx].response) - 1);
+    g_webhook_logs[idx].result = result;
+    g_webhook_logs[idx].created_at = time(NULL);
+    
+    if (g_webhook_log_count < MAX_WEBHOOK_LOGS) {
+        g_webhook_log_count++;
+    }
+    
+    pthread_mutex_unlock(&g_webhook_log_mutex);
+    
+    printf("[SMS] Webhook日志已添加, ID=%d, 结果=%d\n", g_webhook_log_id, result);
+}
+
+/* JSON字符串转义工具 */
+static void json_escape(char *dest, const char *src, size_t dest_size) {
+    if (!dest || !src || dest_size == 0) return;
+    
+    size_t i = 0, j = 0;
+    while (src[i] && j < dest_size - 1) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == '"') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = '"'; } else break;
+        } else if (c == '\\') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = '\\'; } else break;
+        } else if (c == '\b') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'b'; } else break;
+        } else if (c == '\f') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'f'; } else break;
+        } else if (c == '\n') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'n'; } else break;
+        } else if (c == '\r') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'r'; } else break;
+        } else if (c == '\t') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 't'; } else break;
+        } else if (c < 32) {
+            if (j + 6 < dest_size) {
+                j += snprintf(dest + j, 7, "\\u%04x", c);
+            } else break;
+        } else {
+            dest[j++] = c;
+        }
+        i++;
+    }
+    dest[j] = '\0';
+}
+
+/* 获取Webhook发送日志 */
+int sms_get_webhook_logs(char *json_output, size_t size, int max_count) {
+    if (!json_output || size == 0) {
+        return -1;
+    }
+    
+    if (max_count <= 0 || max_count > MAX_WEBHOOK_LOGS) {
+        max_count = 20;
+    }
+    
+    pthread_mutex_lock(&g_webhook_log_mutex);
+    
+    int offset = 0;
+    offset += snprintf(json_output + offset, size - offset, "[");
+    
+    int count = (g_webhook_log_count < max_count) ? g_webhook_log_count : max_count;
+    int first = 1;
+    
+    /* 从最新的日志开始输出 */
+    for (int i = 0; i < count && offset < (int)size - 10; i++) {
+        int idx;
+        if (g_webhook_log_count <= MAX_WEBHOOK_LOGS) {
+            idx = g_webhook_log_count - 1 - i;
+        } else {
+            idx = (g_webhook_log_count - 1 - i) % MAX_WEBHOOK_LOGS;
+        }
+        
+        if (idx < 0) break;
+        
+        if (!first) offset += snprintf(json_output + offset, size - offset, ",");
+        first = 0;
+        
+        char escaped_req[3072] = "";
+        char escaped_resp[3072] = "";
+        
+        json_escape(escaped_req, g_webhook_logs[idx].request, sizeof(escaped_req));
+        json_escape(escaped_resp, g_webhook_logs[idx].response, sizeof(escaped_resp));
+        
+        offset += snprintf(json_output + offset, size - offset,
+            "{\"id\":%d,\"sender\":\"%s\",\"request\":\"%s\",\"response\":\"%s\",\"result\":%d,\"created_at\":%ld}",
+            g_webhook_logs[idx].id,
+            g_webhook_logs[idx].sender,
+            escaped_req,
+            escaped_resp,
+            g_webhook_logs[idx].result,
+            (long)g_webhook_logs[idx].created_at);
+            
+        if (offset >= (int)size - 10) break;
+    }
+    
+    offset += snprintf(json_output + offset, size - offset, "]");
+    
+    pthread_mutex_unlock(&g_webhook_log_mutex);
+    
+    return 0;
+}
