@@ -51,6 +51,24 @@ static int g_rule_ids[IPV6_PROXY_MAX_RULES];
 static int g_rule_count = 0;
 
 /*============================================================================
+ * 日志内存存储
+ *============================================================================*/
+typedef struct {
+    int id;
+    char ipv6_addr[64];
+    char content[1024];
+    char response[1024];
+    int result;
+    time_t created_at;
+} IPv6SendLog;
+
+#define MAX_IPV6_SEND_LOGS 100
+static IPv6SendLog g_ipv6_send_logs[MAX_IPV6_SEND_LOGS];
+static int g_ipv6_log_count = 0;
+static int g_ipv6_log_id = 0;
+static pthread_mutex_t g_ipv6_log_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/*============================================================================
  * 内部函数声明
  *============================================================================*/
 
@@ -61,6 +79,7 @@ static void cancel_send_timer(void);
 static gboolean send_timer_callback(gpointer user_data);
 static void do_send_ipv6(int retry_on_fail);
 static void send_webhook_notification(const char *ipv6_addr);
+static void log_send_record(const char *ipv6_addr, const char *content, const char *response, int result);
 
 /* 6tunnel内置代码 */
 static char *proxy_xmalloc(int size);
@@ -442,6 +461,16 @@ static int create_ipv6_proxy_tables(void) {
         "created_at INTEGER NOT NULL"
         ");";
     
+    /* 发送日志表 */
+    const char *sql3 = 
+        "CREATE TABLE IF NOT EXISTS ipv6_send_log ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "ipv6_addr TEXT,"
+        "content TEXT,"
+        "result INTEGER DEFAULT 0,"
+        "created_at INTEGER NOT NULL"
+        ");";
+    
     int ret1 = db_execute(sql1);
     if (ret1 != 0) {
         printf("[IPv6Proxy] 创建配置表失败 (ret=%d)\n", ret1);
@@ -452,6 +481,12 @@ static int create_ipv6_proxy_tables(void) {
     if (ret2 != 0) {
         printf("[IPv6Proxy] 创建规则表失败 (ret=%d)\n", ret2);
         return ret2;
+    }
+    
+    int ret3 = db_execute(sql3);
+    if (ret3 != 0) {
+        printf("[IPv6Proxy] 创建发送日志表失败 (ret=%d)\n", ret3);
+        return ret3;
     }
     
     printf("[IPv6Proxy] 数据库表创建/验证成功\n");
@@ -582,16 +617,51 @@ static void send_webhook_notification(const char *ipv6_addr) {
         strncpy(body, temp, sizeof(body) - 1);
     }
     
-    /* 替换 #{port} */
+    /* 兼容性对比 #{sender} -> #{ipv6} */
+    while ((p = strstr(body, "#{sender}")) != NULL) {
+        *p = '\0';
+        snprintf(temp, sizeof(temp), "%s%s%s", body, ipv6_addr, p + 9);
+        strncpy(body, temp, sizeof(body) - 1);
+    }
+
+    /* 替换 #{port} - 获取所有端口列表 */
+    IPv6ProxyRule rules[IPV6_PROXY_MAX_RULES];
+    int rule_count = ipv6_proxy_rule_list(rules, IPV6_PROXY_MAX_RULES);
+    char ports_str[256] = "port";  /* 默认端口 */
+    if (rule_count > 0) {
+        int offset = 0;
+        for (int i = 0; i < rule_count && offset < (int)sizeof(ports_str) - 16; i++) {
+            if (rules[i].enabled) {
+                if (offset > 0) {
+                    offset += snprintf(ports_str + offset, sizeof(ports_str) - offset, ",%d", rules[i].ipv6_port);
+                } else {
+                    offset += snprintf(ports_str + offset, sizeof(ports_str) - offset, "%d", rules[i].ipv6_port);
+                }
+            }
+        }
+    }
     while ((p = strstr(body, "#{port}")) != NULL) {
         *p = '\0';
-        snprintf(temp, sizeof(temp), "%s%s%s", body, "6677", p + 7);
+        snprintf(temp, sizeof(temp), "%s%s%s", body, ports_str, p + 7);
         strncpy(body, temp, sizeof(body) - 1);
     }
     
-    /* 替换 #{link} */
-    char link[128];
-    snprintf(link, sizeof(link), "http://[%s]:6677", ipv6_addr);
+    /* 替换 #{link} - 每行一个 [ipv6]:端口 格式 */
+    char link[1024] = "";
+    if (rule_count > 0) {
+        int link_offset = 0;
+        for (int i = 0; i < rule_count && link_offset < (int)sizeof(link) - 128; i++) {
+            if (rules[i].enabled) {
+                if (link_offset > 0) {
+                    link_offset += snprintf(link + link_offset, sizeof(link) - link_offset, "\\n[%s]:%d", ipv6_addr, rules[i].ipv6_port);
+                } else {
+                    link_offset += snprintf(link + link_offset, sizeof(link) - link_offset, "[%s]:%d", ipv6_addr, rules[i].ipv6_port);
+                }
+            }
+        }
+    } else {
+        snprintf(link, sizeof(link), "[%s]:port", ipv6_addr);
+    }
     while ((p = strstr(body, "#{link}")) != NULL) {
         *p = '\0';
         snprintf(temp, sizeof(temp), "%s%s%s", body, link, p + 7);
@@ -610,7 +680,8 @@ static void send_webhook_notification(const char *ipv6_addr) {
     }
     
     /* 将body写入临时文件 */
-    const char *tmp_file = "/tmp/ipv6_webhook_body.json";
+    char tmp_file[128];
+    snprintf(tmp_file, sizeof(tmp_file), "/tmp/ipv6_webhook_%d.json", (int)getpid());
     FILE *fp = fopen(tmp_file, "w");
     if (fp) {
         fputs(body, fp);
@@ -626,11 +697,12 @@ static void send_webhook_notification(const char *ipv6_addr) {
     
     /* 解析自定义headers */
     if (strlen(g_current_config.webhook_headers) > 0) {
-        char headers_copy[512];
+        char headers_copy[1024];
         strncpy(headers_copy, g_current_config.webhook_headers, sizeof(headers_copy) - 1);
         headers_copy[sizeof(headers_copy) - 1] = '\0';
         
-        char *line = strtok(headers_copy, "\n");
+        char *saveptr;
+        char *line = strtok_r(headers_copy, "\n", &saveptr);
         while (line) {
             while (*line == ' ' || *line == '\r') line++;
             if (strlen(line) > 0 && strchr(line, ':')) {
@@ -640,32 +712,51 @@ static void send_webhook_notification(const char *ipv6_addr) {
                 snprintf(header_arg, sizeof(header_arg), " -H '%s'", line);
                 strncat(headers_part, header_arg, sizeof(headers_part) - strlen(headers_part) - 1);
             }
-            line = strtok(NULL, "\n");
+            line = strtok_r(NULL, "\n", &saveptr);
         }
     }
     
-    /* 默认添加Content-Type */
+    /* 同步执行curl获取响应 */
     if (strstr(headers_part, "Content-Type") == NULL) {
         snprintf(cmd, sizeof(cmd),
-            "curl -s -X POST '%s' -H 'Content-Type: application/json'%s -d @%s",
+            "curl -s --max-time 10 -X POST '%s' -H 'Content-Type: application/json'%s -d @%s 2>&1",
             g_current_config.webhook_url, headers_part, tmp_file);
     } else {
         snprintf(cmd, sizeof(cmd),
-            "curl -s -X POST '%s'%s -d @%s",
+            "curl -s --max-time 10 -X POST '%s'%s -d @%s 2>&1",
             g_current_config.webhook_url, headers_part, tmp_file);
     }
     
     printf("[IPv6Proxy] 执行: %s\n", cmd);
-    int ret = system(cmd);
     
-    /* 清理临时文件 */
+    /* 使用popen捕获响应 */
+    char response[1024] = "";
+    FILE *pipe = popen(cmd, "r");
+    if (pipe) {
+        size_t total = 0;
+        char buf[256];
+        while (fgets(buf, sizeof(buf), pipe) && total < sizeof(response) - 1) {
+            size_t len = strlen(buf);
+            if (total + len < sizeof(response)) {
+                strcat(response, buf);
+                total += len;
+            }
+        }
+        pclose(pipe);
+    } else {
+        strncpy(response, "执行curl失败", sizeof(response) - 1);
+    }
+    
+    /* 删除临时文件 */
     unlink(tmp_file);
     
-    if (ret == 0) {
-        printf("[IPv6Proxy] Webhook发送成功\n");
-    } else {
-        printf("[IPv6Proxy] Webhook发送失败: %d\n", ret);
-    }
+    /* 判断是否成功 */
+    int result = (strlen(response) > 0 && strstr(response, "curl:") == NULL) ? 1 : 0;
+    
+    printf("[IPv6Proxy] Webhook响应: %s\n", response);
+    
+    /* 记录日志 */
+    log_send_record(ipv6_addr, body, response, result);
 }
 
 static void do_send_ipv6(int retry_on_fail) {
@@ -736,6 +827,12 @@ int ipv6_proxy_init(const char *db_path) {
     memset(g_rule_ids, 0, sizeof(g_rule_ids));
     g_rule_count = 0;
     
+    /* 初始化日志计数 */
+    pthread_mutex_lock(&g_ipv6_log_mutex);
+    g_ipv6_log_count = 0;
+    g_ipv6_log_id = 0;
+    pthread_mutex_unlock(&g_ipv6_log_mutex);
+
     /* 加载配置 */
     load_ipv6_proxy_config();
     
@@ -808,11 +905,17 @@ int ipv6_proxy_set_config(const IPv6ProxyConfig *config) {
     db_escape_string(config->webhook_body, escaped_body, sizeof(escaped_body));
     db_escape_string(config->webhook_headers, escaped_headers, sizeof(escaped_headers));
     
+    /* 开启自启动时强制启用服务 */
+    int final_enabled = config->enabled;
+    if (config->auto_start) {
+        final_enabled = 1;
+    }
+    
     snprintf(sql, sizeof(sql),
         "INSERT OR REPLACE INTO ipv6_proxy_config "
         "(id, enabled, auto_start, send_enabled, send_interval, webhook_url, webhook_body, webhook_headers) "
         "VALUES (1, %d, %d, %d, %d, '%s', '%s', '%s');",
-        config->enabled, config->auto_start, config->send_enabled,
+        final_enabled, config->auto_start, config->send_enabled,
         config->send_interval, escaped_url, escaped_body, escaped_headers);
     
     pthread_mutex_lock(&g_ipv6_proxy_mutex);
@@ -824,8 +927,9 @@ int ipv6_proxy_set_config(const IPv6ProxyConfig *config) {
         return -1;
     }
     
-    /* 更新内存配置 */
+    /* 更新内存配置 - 使用数据库实际保存的值 */
     memcpy(&g_current_config, config, sizeof(IPv6ProxyConfig));
+    g_current_config.enabled = final_enabled;  /* 使用实际保存的值 */
     
     /* 重新设置定时器 */
     setup_send_timer();
@@ -1206,3 +1310,111 @@ int ipv6_proxy_test_send(void) {
     do_send_ipv6(0);  /* 不重试 */
     return 0;
 }
+
+/*============================================================================
+ * 发送日志管理
+ *============================================================================*/
+
+/* 记录发送日志 */
+static void log_send_record(const char *ipv6_addr, const char *content, const char *response, int result) {
+    pthread_mutex_lock(&g_ipv6_log_mutex);
+    
+    int idx = g_ipv6_log_id % MAX_IPV6_SEND_LOGS;
+    g_ipv6_log_id++;
+    
+    g_ipv6_send_logs[idx].id = g_ipv6_log_id;
+    strncpy(g_ipv6_send_logs[idx].ipv6_addr, ipv6_addr ? ipv6_addr : "", sizeof(g_ipv6_send_logs[idx].ipv6_addr) - 1);
+    strncpy(g_ipv6_send_logs[idx].content, content ? content : "", sizeof(g_ipv6_send_logs[idx].content) - 1);
+    strncpy(g_ipv6_send_logs[idx].response, response ? response : "", sizeof(g_ipv6_send_logs[idx].response) - 1);
+    g_ipv6_send_logs[idx].result = result;
+    g_ipv6_send_logs[idx].created_at = time(NULL);
+    
+    if (g_ipv6_log_count < MAX_IPV6_SEND_LOGS) {
+        g_ipv6_log_count++;
+    }
+    
+    pthread_mutex_unlock(&g_ipv6_log_mutex);
+    
+    printf("[IPv6Proxy] 发送日志已添加, ID=%d, 结果=%d\n", g_ipv6_log_id, result);
+}
+
+/* JSON字符串转义工具 */
+static void json_escape(char *dest, const char *src, size_t dest_size) {
+    if (!dest || !src || dest_size == 0) return;
+    
+    size_t i = 0, j = 0;
+    while (src[i] && j < dest_size - 1) {
+        unsigned char c = (unsigned char)src[i];
+        if (c == '"') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = '"'; } else break;
+        } else if (c == '\\') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = '\\'; } else break;
+        } else if (c == '\b') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'b'; } else break;
+        } else if (c == '\f') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'f'; } else break;
+        } else if (c == '\n') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'n'; } else break;
+        } else if (c == '\r') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 'r'; } else break;
+        } else if (c == '\t') {
+            if (j + 2 < dest_size) { dest[j++] = '\\'; dest[j++] = 't'; } else break;
+        } else if (c < 32) {
+            if (j + 6 < dest_size) {
+                j += snprintf(dest + j, 7, "\\u%04x", c);
+            } else break;
+        } else {
+            dest[j++] = c;
+        }
+        i++;
+    }
+    dest[j] = '\0';
+}
+
+/* 获取发送日志列表 */
+int ipv6_proxy_get_send_logs(char *json_output, size_t size, int max_count) {
+    if (!json_output || size < 10) return -1;
+    
+    pthread_mutex_lock(&g_ipv6_log_mutex);
+    
+    if (max_count <= 0 || max_count > MAX_IPV6_SEND_LOGS) {
+        max_count = MAX_IPV6_SEND_LOGS;
+    }
+    if (max_count > g_ipv6_log_count) {
+        max_count = g_ipv6_log_count;
+    }
+    
+    int offset = 0;
+    offset += snprintf(json_output + offset, size - offset, "[");
+    
+    for (int i = 0; i < max_count; i++) {
+        /* 从最新的开始取 */
+        int idx = (g_ipv6_log_id - 1 - i) % MAX_IPV6_SEND_LOGS;
+        if (idx < 0) idx += MAX_IPV6_SEND_LOGS;
+        
+        if (i > 0) offset += snprintf(json_output + offset, size - offset, ",");
+        
+        char escaped_content[3072] = "";
+        char escaped_response[3072] = "";
+        
+        json_escape(escaped_content, g_ipv6_send_logs[idx].content, sizeof(escaped_content));
+        json_escape(escaped_response, g_ipv6_send_logs[idx].response, sizeof(escaped_response));
+        
+        offset += snprintf(json_output + offset, size - offset,
+            "{\"id\":%d,\"ipv6\":\"%s\",\"content\":\"%s\",\"response\":\"%s\",\"result\":%d,\"created_at\":%ld}",
+            g_ipv6_send_logs[idx].id,
+            g_ipv6_send_logs[idx].ipv6_addr,
+            escaped_content,
+            escaped_response,
+            g_ipv6_send_logs[idx].result,
+            (long)g_ipv6_send_logs[idx].created_at);
+            
+        if (offset >= (int)size - 10) break;
+    }
+    
+    offset += snprintf(json_output + offset, size - offset, "]");
+    
+    pthread_mutex_unlock(&g_ipv6_log_mutex);
+    return 0;
+}
+

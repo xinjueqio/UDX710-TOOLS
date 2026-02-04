@@ -190,8 +190,22 @@ int ipv6_proxy_send_now(void);
  */
 int ipv6_proxy_test_send(void);
 
+/*============================================================================
+ * 发送日志
+ *============================================================================*/
+
+/**
+ * 获取发送日志列表
+ * @param json_output 输出JSON字符串
+ * @param size 缓冲区大小
+ * @param max_count 最大记录数（建议100）
+ * @return 0成功，-1失败
+ */
+int ipv6_proxy_get_send_logs(char *json_output, size_t size, int max_count);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* IPV6_PROXY_H */
+

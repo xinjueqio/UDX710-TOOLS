@@ -250,6 +250,9 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
         else if (mg_match(hm->uri, mg_str("/api/sms/webhook/test"), NULL)) {
             handle_sms_webhook_test(c, hm);
         }
+        else if (mg_match(hm->uri, mg_str("/api/sms/webhook/logs"), NULL)) {
+            handle_sms_webhook_logs(c, hm);
+        }
         else if (mg_match(hm->uri, mg_str("/api/sms/fix"), NULL)) {
             if (hm->method.len == 3 && memcmp(hm->method.buf, "GET", 3) == 0) {
                 handle_sms_fix_get(c, hm);
@@ -466,6 +469,9 @@ static void http_handler(struct mg_connection *c, int ev, void *ev_data) {
         }
         else if (mg_match(hm->uri, mg_str("/api/ipv6-proxy/test"), NULL)) {
             handle_ipv6_proxy_test(c, hm);
+        }
+        else if (mg_match(hm->uri, mg_str("/api/ipv6-proxy/send-logs"), NULL)) {
+            handle_ipv6_proxy_send_logs(c, hm);
         }
         /* 手机壳模式 API */
         else if (mg_match(hm->uri, mg_str("/api/phone-case"), NULL)) {

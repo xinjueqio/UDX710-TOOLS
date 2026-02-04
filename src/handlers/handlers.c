@@ -2769,3 +2769,74 @@ void handle_ipv6_proxy_test(struct mg_connection *c, struct mg_http_message *hm)
         HTTP_ERROR(c, 500, "测试发送失败");
     }
 }
+
+/* GET /api/ipv6-proxy/send-logs - 获取IPv6发送日志 */
+void handle_ipv6_proxy_send_logs(struct mg_connection *c, struct mg_http_message *hm) {
+    HTTP_CHECK_GET(c, hm);
+    
+    /* 从查询参数获取行数，默认20 */
+    char lines_str[16] = {0};
+    struct mg_str lines_param = mg_http_var(hm->query, mg_str("lines"));
+    if (lines_param.len > 0 && lines_param.len < sizeof(lines_str)) {
+        memcpy(lines_str, lines_param.buf, lines_param.len);
+    }
+    int max_lines = (strlen(lines_str) > 0) ? atoi(lines_str) : 20;
+    if (max_lines <= 0 || max_lines > 100) {
+        max_lines = 20;
+    }
+    
+    char *logs_json = malloc(512 * 1024);
+    if (!logs_json) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    
+    if (ipv6_proxy_get_send_logs(logs_json, 512 * 1024, max_lines) != 0) {
+        free(logs_json);
+        HTTP_ERROR(c, 500, "获取日志失败");
+        return;
+    }
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_add_raw(j, "data", logs_json);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+    
+    free(logs_json);
+}
+
+/* 处理短信Webhook发送日志请求 */
+void handle_sms_webhook_logs(struct mg_connection *c, struct mg_http_message *hm) {
+    int max_lines = 20;
+    char lines_param[16];
+    if (mg_http_get_var(&hm->query, "lines", lines_param, sizeof(lines_param)) > 0) {
+        max_lines = atoi(lines_param);
+        if (max_lines <= 0) max_lines = 20;
+        if (max_lines > 100) max_lines = 100;
+    }
+    
+    char *logs_json = malloc(512 * 1024);
+    if (!logs_json) {
+        HTTP_ERROR(c, 500, "内存分配失败");
+        return;
+    }
+    
+    if (sms_get_webhook_logs(logs_json, 512 * 1024, max_lines) != 0) {
+        free(logs_json);
+        HTTP_ERROR(c, 500, "获取日志失败");
+        return;
+    }
+    
+    JsonBuilder *j = json_new();
+    json_obj_open(j);
+    json_add_str(j, "status", "ok");
+    json_add_str(j, "message", "");
+    json_add_raw(j, "data", logs_json);
+    json_obj_close(j);
+    HTTP_OK_FREE(c, json_finish(j));
+    
+    free(logs_json);
+}

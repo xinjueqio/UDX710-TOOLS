@@ -360,16 +360,19 @@ async function testSend() {
   }
 }
 
-// 格式化访问链接为 http://[ipv6]:端口 格式（端口显示为文字提示）
-const formattedLink = computed(() => {
-  if (!status.value.link) return ''
-  // 从 http://[ipv6]:port 格式提取 ipv6 部分，端口显示为文字
-  const match = status.value.link.match(/http:\/\/(\[[^\]]+\]):(\d+)/)
-  if (match) {
-    return `http://${match[1]}:${t('ipv6Proxy.portText')}`
+// 格式化访问链接为 [ipv6]:端口 格式（每个端口一行）
+const formattedLinks = computed(() => {
+  if (!status.value.ipv6_addr || !rules.value.length) {
+    return status.value.ipv6_addr ? [`[${status.value.ipv6_addr}]:port`] : []
   }
-  return status.value.link
+  // 每个启用的规则生成一行
+  return rules.value
+    .filter(r => r.enabled)
+    .map(r => `[${status.value.ipv6_addr}]:${r.ipv6_port}`)
 })
+
+// 保持向后兼容
+const formattedLink = computed(() => formattedLinks.value.join('\n'))
 
 // 复制文本
 async function copyText(text) {
@@ -407,6 +410,30 @@ function copyLink() {
   if (formattedLink.value) {
     copyText(formattedLink.value)
   }
+}
+
+// 发送日志
+const sendLogs = ref([])
+const showLogsDialog = ref(false)
+
+async function fetchSendLogs() {
+  try {
+    const res = await fetch('/api/ipv6-proxy/send-logs?lines=50', {
+      headers: getHeaders()
+    })
+    if (res.ok) {
+      const data = await res.json()
+      sendLogs.value = data.data || []
+    }
+  } catch (e) {
+    console.warn('获取发送日志失败:', e)
+  }
+}
+
+function formatLogTime(timestamp) {
+  if (!timestamp) return ''
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleString()
 }
 
 // 初始化
@@ -452,20 +479,37 @@ onUnmounted(() => {
       </div>
 
       <div class="space-y-3">
-        <!-- 访问链接 -->
-        <div class="flex items-center justify-between bg-slate-50 dark:bg-white/5 rounded-xl p-4 border border-slate-200 dark:border-white/10">
-          <div class="flex-1 min-w-0">
-            <p class="text-slate-500 dark:text-white/50 text-xs mb-1">{{ t('ipv6Proxy.accessLink') }}</p>
-            <p class="font-mono text-lg text-slate-900 dark:text-white truncate">{{ formattedLink || t('ipv6Proxy.noIpv6') }}</p>
+        <!-- 访问链接列表 -->
+        <div class="bg-slate-50 dark:bg-white/5 rounded-xl p-4 border border-slate-200 dark:border-white/10">
+          <div class="flex items-center justify-between mb-2">
+            <p class="text-slate-500 dark:text-white/50 text-xs">{{ t('ipv6Proxy.accessLink') }}</p>
+            <button
+              v-if="formattedLinks.length > 0"
+              @click="copyLink"
+              class="px-3 py-1.5 bg-cyan-500 hover:bg-cyan-600 text-white text-xs rounded-lg transition-colors flex items-center"
+            >
+              <i class="fas fa-copy mr-1.5"></i>
+              {{ t('common.copy') }}
+            </button>
           </div>
-          <button
-            v-if="formattedLink"
-            @click="copyLink"
-            class="ml-3 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors flex items-center"
-          >
-            <i class="fas fa-copy mr-1.5"></i>
-            {{ t('common.copy') }}
-          </button>
+          <div v-if="formattedLinks.length > 0" class="space-y-1">
+            <p 
+              v-for="(link, idx) in formattedLinks" 
+              :key="idx" 
+              class="font-mono text-sm text-slate-900 dark:text-white break-all"
+            >{{ link }}</p>
+          </div>
+          <p v-else class="font-mono text-sm text-slate-400 dark:text-white/50">{{ t('ipv6Proxy.noIpv6') }}</p>
+          <!-- 发送日志按钮移至底部 -->
+          <div class="mt-3 pt-3 border-t border-slate-200 dark:border-white/10">
+            <button
+              @click="showLogsDialog = true; fetchSendLogs()"
+              class="w-full sm:w-auto px-4 py-2 bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-600 dark:text-white/70 text-sm rounded-lg transition-colors flex items-center justify-center"
+            >
+              <i class="fas fa-history mr-2"></i>
+              {{ t('ipv6Proxy.sendLogs') || '查看发送日志' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -939,6 +983,74 @@ onUnmounted(() => {
             <button @click="showGuide = false" class="px-6 py-2.5 rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 transition-colors flex items-center">
               <i class="fas fa-check mr-2"></i>
               {{ t('ipv6Proxy.guideGotIt') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 发送日志对话框 -->
+    <Teleport to="body">
+      <div v-if="showLogsDialog" class="fixed inset-0 z-50 flex items-center justify-center" @click.self="showLogsDialog = false">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+        <div class="relative max-w-2xl w-full mx-4 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-h-[80vh] flex flex-col">
+          <!-- 标题 -->
+          <div class="px-6 py-5 border-b border-slate-200 dark:border-white/10 flex items-center justify-between flex-shrink-0">
+            <h2 class="text-xl font-bold text-slate-900 dark:text-white flex items-center">
+              <i class="fas fa-history text-cyan-500 mr-3"></i>
+              {{ t('ipv6Proxy.sendLogsTitle') || 'IPv6 发送日志' }}
+            </h2>
+            <button @click="showLogsDialog = false" class="w-8 h-8 rounded-lg bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 flex items-center justify-center transition-colors">
+              <i class="fas fa-times text-slate-500 dark:text-white/50"></i>
+            </button>
+          </div>
+
+          <!-- 内容 -->
+          <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+            <div v-if="sendLogs.length === 0" class="text-center py-8">
+              <i class="fas fa-inbox text-slate-300 dark:text-white/20 text-4xl mb-4"></i>
+              <p class="text-slate-500 dark:text-white/50">{{ t('ipv6Proxy.noSendLogs') || '暂无发送记录' }}</p>
+            </div>
+            <div 
+              v-for="log in sendLogs" 
+              :key="log.id" 
+              class="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10"
+            >
+              <!-- 头部: IPv6和状态 -->
+              <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                <span class="font-mono text-xs sm:text-sm text-slate-900 dark:text-white break-all">{{ log.ipv6 }}</span>
+                <span :class="['px-2 py-0.5 rounded text-xs flex-shrink-0', log.result ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400']">
+                  {{ log.result ? (t('ipv6Proxy.sendSuccess') || '已发送') : (t('ipv6Proxy.sendFailed') || '失败') }}
+                </span>
+              </div>
+              <!-- 发送内容: 可展开 -->
+              <details class="mb-2">
+                <summary class="text-xs text-slate-500 dark:text-white/50 cursor-pointer hover:text-slate-700 dark:hover:text-white/70">
+                  <span class="ml-1">{{ t('ipv6Proxy.sendContent') || '发送内容' }}</span>
+                </summary>
+                <pre class="mt-2 p-2 text-xs bg-slate-100 dark:bg-white/5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all text-slate-700 dark:text-white/70">{{ log.content }}</pre>
+              </details>
+              <!-- 返回结果: 可展开 -->
+              <details v-if="log.response" class="mb-2">
+                <summary class="text-xs text-slate-500 dark:text-white/50 cursor-pointer hover:text-slate-700 dark:hover:text-white/70">
+                  <span class="ml-1">{{ t('ipv6Proxy.sendResponse') || '返回结果' }}</span>
+                </summary>
+                <pre class="mt-2 p-2 text-xs bg-slate-100 dark:bg-white/5 rounded-lg overflow-x-auto whitespace-pre-wrap break-all text-slate-700 dark:text-white/70">{{ log.response }}</pre>
+              </details>
+              <!-- 时间 -->
+              <p class="text-xs text-slate-400 dark:text-white/30">{{ formatLogTime(log.created_at) }}</p>
+            </div>
+          </div>
+
+          <!-- 底部按钮 -->
+          <div class="px-6 py-4 bg-slate-50 dark:bg-white/5 flex justify-between items-center flex-shrink-0">
+            <button @click="fetchSendLogs" class="px-4 py-2 rounded-lg bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-white/70 hover:bg-slate-300 dark:hover:bg-white/20 transition-colors flex items-center text-sm">
+              <i class="fas fa-sync-alt mr-2"></i>
+              {{ t('common.refresh') || '刷新' }}
+            </button>
+            <button @click="showLogsDialog = false" class="px-6 py-2.5 rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 transition-colors flex items-center">
+              <i class="fas fa-check mr-2"></i>
+              {{ t('common.close') || '关闭' }}
             </button>
           </div>
         </div>

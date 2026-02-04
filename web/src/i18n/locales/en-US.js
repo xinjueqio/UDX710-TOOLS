@@ -385,6 +385,15 @@ export default {
     testSent: 'Test notification sent!',
     testFailed: 'Test failed',
     saveFailed: 'Save failed',
+    webhookLogs: 'Forwarding Logs',
+    customPlatform: 'Custom',
+    webhookLogsDesc: 'Recent 20 forwarding records (cleared after reboot)',
+    noWebhookLogs: 'No forwarding records',
+    viewSendLogs: 'Send Logs',
+    requestContent: 'Request Content',
+    responseContent: 'Response Result',
+    webhookSendSuccess: 'Success',
+    webhookSendFailed: 'Failed',
     smsStorageConfig: 'SMS Storage Config',
     inboxMaxStorage: 'Inbox Max Storage',
     inboxMaxStorageDesc: 'Maximum number of received SMS (10-150)',
@@ -1173,7 +1182,7 @@ export default {
     tip2: 'Forward rules require restart to take effect after adding/deleting',
     tip3: 'Scheduled push can send IPv6 address to WeChat, DingTalk etc., convenient for getting latest address',
     portText: 'port',
-    
+
     // Guide modal
     guide: 'Guide',
     guideTitle: 'IPv6 Port Forwarding Guide',
@@ -1203,7 +1212,16 @@ export default {
     guideSecurity3: 'Set password or access control for exposed services',
     guideSecurity4: 'IPv6 address may change, use scheduled push feature',
     guideSecurityWarn: '⚠️ Warning: Exposed services without password protection may be maliciously accessed!',
-    guideGotIt: 'Got it'
+    guideGotIt: 'Got it',
+
+    // Send logs
+    sendLogs: 'View Send Logs',
+    sendLogsTitle: 'IPv6 Send Logs',
+    noSendLogs: 'No send records',
+    sendSuccess: 'Sent',
+    sendFailed: 'Failed',
+    sendContent: 'Send Content',
+    sendResponse: 'Response'
   }
 }
 

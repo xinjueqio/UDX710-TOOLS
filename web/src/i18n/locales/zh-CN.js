@@ -384,6 +384,15 @@
     testSent: '测试通知已发送！',
     testFailed: '测试失败',
     saveFailed: '保存失败',
+    webhookLogs: '转发日志',
+    customPlatform: '自定义设置',
+    webhookLogsDesc: '最近20条转发记录 (重启后清空)',
+    noWebhookLogs: '暂无转发记录',
+    viewSendLogs: '发送日志',
+    requestContent: '请求内容',
+    responseContent: '返回结果',
+    webhookSendSuccess: '发送成功',
+    webhookSendFailed: '失败',
     smsStorageConfig: '短信存储配置',
     inboxMaxStorage: '收件箱最大存储',
     inboxMaxStorageDesc: '接收短信的最大存储条数 (10-150)',
@@ -1187,7 +1196,7 @@
     tip2: '转发规则添加/删除后需重启服务生效',
     tip3: '定时推送功能可将IPv6地址定时推送到微信、钉钉等平台，方便随时获取最新地址',
     portText: '端口',
-    
+
     // 功能说明弹窗
     guide: '功能说明',
     guideTitle: 'IPv6端口转发说明',
@@ -1217,7 +1226,16 @@
     guideSecurity3: '建议为暴露的服务设置密码或访问控制',
     guideSecurity4: 'IPv6地址可能会变化，建议配合定时推送功能使用',
     guideSecurityWarn: '⚠️ 警告：暴露的服务如无密码保护，可能被恶意访问，请谨慎操作！',
-    guideGotIt: '我知道了'
+    guideGotIt: '我知道了',
+
+    // 发送日志
+    sendLogs: '查看发送日志',
+    sendLogsTitle: 'IPv6 发送日志',
+    noSendLogs: '暂无发送记录',
+    sendSuccess: '已发送',
+    sendFailed: '失败',
+    sendContent: '发送内容',
+    sendResponse: '返回结果'
   }
 }
 

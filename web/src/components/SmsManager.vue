@@ -27,6 +27,8 @@ const smsFixLoading = ref(false)
 const showSelectMode = ref(false)
 const showSentSelectMode = ref(false)
 const showTutorial = ref(false)
+const showWebhookLogs = ref(false)
+const webhookLogs = ref([])
 
 const webhookConfig = ref({
   enabled: false, platform: 'pushplus', url: 'http://www.pushplus.plus/send',
@@ -40,7 +42,8 @@ const platformTemplates = {
   bark: { url: 'https://api.day.app/YOUR_KEY/新短信/#{content}', body: '', headers: '' },
   dingtalk: { url: 'https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN', body: '{"msgtype":"text","text":{"content":"新短信\\n发件人: #{sender}\\n内容: #{content}"}}', headers: 'Content-Type: application/json' },
   feishu: { url: 'https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN', body: '{"msg_type":"text","content":{"text":"新短信\\n发件人: #{sender}\\n内容: #{content}"}}', headers: 'Content-Type: application/json' },
-  discord: { url: 'https://discord.com/api/webhooks/YOUR_WEBHOOK', body: '{"content":"**新短信**\\n发件人: #{sender}\\n内容: #{content}"}', headers: 'Content-Type: application/json' }
+  discord: { url: 'https://discord.com/api/webhooks/YOUR_WEBHOOK', body: '{"content":"**新短信**\\n发件人: #{sender}\\n内容: #{content}"}', headers: 'Content-Type: application/json' },
+  custom: { url: '', body: '', headers: '' }
 }
 
 const totalPages = computed(() => Math.ceil(messages.value.length / pageSize) || 1)
@@ -261,6 +264,28 @@ async function testWebhook() {
   } catch (e) { showStatus(false, t('sms.testFailed')) }
 }
 
+async function fetchWebhookLogs() {
+  try {
+    const res = await authFetch('/api/sms/webhook/logs?lines=20')
+    if (res.ok) {
+      const data = await res.json()
+      webhookLogs.value = data.data || []
+    }
+  } catch (e) { console.error('获取webhook日志失败:', e) }
+}
+
+function formatLogTime(ts) {
+  if (!ts) return ''
+  const d = new Date(ts * 1000)
+  const pad = n => n.toString().padStart(2, '0')
+  return `${d.getMonth()+1}/${d.getDate()} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function openWebhookLogs() {
+  fetchWebhookLogs()
+  showWebhookLogs.value = true
+}
+
 async function saveSmsConfig() {
   try {
     const result = await saveSmsConfigApi()
@@ -392,6 +417,7 @@ async function saveSmsConfig() {
         </div>
         <div class="flex space-x-2">
           <button @click="showTutorial = true" class="px-3 py-2 bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded-xl hover:bg-violet-500/30 transition-all border border-violet-500/30" :title="t('sms.viewTutorial')"><i class="fas fa-book"></i></button>
+          <button @click="openWebhookLogs" class="px-3 py-2 bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl hover:bg-amber-500/30 transition-all border border-amber-500/30" :title="t('sms.viewSendLogs') || '发送日志'"><i class="fas fa-history"></i></button>
           <button @click="saveWebhook" class="px-4 py-2 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-xl hover:bg-emerald-500/30 transition-all border border-emerald-500/30">{{ t('sms.save') }}</button>
           <button @click="testWebhook" class="px-4 py-2 bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-500/30 transition-all border border-blue-500/30">{{ t('sms.test') }}</button>
         </div>
@@ -402,6 +428,7 @@ async function saveSmsConfig() {
           <select v-model="webhookConfig.platform" @change="applyTemplate(webhookConfig.platform)" class="w-full px-4 py-3 bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl text-slate-900 dark:text-white focus:border-emerald-500/50 focus:outline-none transition-all">
             <option value="pushplus">PushPlus</option><option value="serverchan">Server酱</option><option value="bark">Bark</option>
             <option value="dingtalk">钉钉机器人</option><option value="feishu">飞书机器人</option><option value="discord">Discord</option>
+            <option value="custom">{{ t('sms.customPlatform') || '自定义' }}</option>
           </select>
         </div>
         <div class="flex items-center justify-between p-4 bg-slate-50 dark:bg-white/5 rounded-xl border border-slate-200 dark:border-white/10">
@@ -734,6 +761,85 @@ async function saveSmsConfig() {
             </div>
             <div class="p-4 border-t border-slate-200 dark:border-white/10 flex-shrink-0">
               <button @click="showTutorial = false" class="w-full px-6 py-3 bg-gradient-to-r from-violet-500 to-purple-500 text-white font-medium rounded-xl hover:shadow-lg hover:shadow-violet-500/30 transition-all">{{ t('sms.tutorialGotIt') }}</button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Webhook发送日志对话框 -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showWebhookLogs" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showWebhookLogs = false"></div>
+          <div class="relative w-full max-w-2xl bg-white dark:bg-slate-800/95 backdrop-blur-xl rounded-3xl border border-slate-200 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+            <!-- 头部 -->
+            <div class="p-4 sm:p-6 border-b border-slate-200 dark:border-white/10 bg-gradient-to-r from-amber-500/10 to-orange-500/10 flex-shrink-0">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                  <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                    <i class="fas fa-history text-white text-base sm:text-lg"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-slate-900 dark:text-white font-bold text-sm sm:text-base">{{ t('sms.webhookLogs') || '转发日志' }}</h3>
+                    <p class="text-slate-500 dark:text-white/50 text-xs">{{ t('sms.webhookLogsDesc') || '最近20条转发记录 (重启后清空)' }}</p>
+                  </div>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button @click="fetchWebhookLogs" class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 flex items-center justify-center transition-all text-slate-600 dark:text-white/60">
+                    <i class="fas fa-sync-alt text-xs sm:text-sm"></i>
+                  </button>
+                  <button @click="showWebhookLogs = false" class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 flex items-center justify-center transition-all text-slate-600 dark:text-white/60">
+                    <i class="fas fa-times text-xs sm:text-sm"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 内容 -->
+            <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+              <div v-if="webhookLogs.length === 0" class="text-center py-8">
+                <i class="fas fa-inbox text-slate-300 dark:text-white/20 text-4xl mb-4"></i>
+                <p class="text-slate-500 dark:text-white/50">{{ t('sms.noWebhookLogs') || '暂无转发记录' }}</p>
+              </div>
+              <div 
+                v-for="log in webhookLogs" 
+                :key="log.id" 
+                class="p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10"
+              >
+                <!-- 头部: 发送者和状态 -->
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-xs text-slate-500 dark:text-white/40">From:</span>
+                    <span class="font-mono text-xs sm:text-sm text-slate-900 dark:text-white">{{ log.sender }}</span>
+                  </div>
+                  <span :class="['px-2 py-0.5 rounded text-xs flex-shrink-0', log.result ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400']">
+                    {{ log.result ? (t('sms.webhookSendSuccess') || '发送成功') : (t('sms.webhookSendFailed') || '失败') }}
+                  </span>
+                </div>
+
+                <!-- 详情内容: 请求和返回 -->
+                <div class="space-y-2">
+                  <details class="group">
+                    <summary class="text-xs text-slate-500 dark:text-white/50 cursor-pointer hover:text-slate-700 dark:hover:text-white/70 list-none flex items-center">
+                      <i class="fas fa-chevron-right mr-1 transition-transform group-open:rotate-90"></i>
+                      <span>{{ t('sms.requestContent') || '请求内容' }}</span>
+                    </summary>
+                    <pre class="mt-2 p-2 text-xs bg-slate-100 dark:bg-black/20 rounded-lg overflow-x-auto whitespace-pre-wrap break-all text-slate-700 dark:text-white/70 font-mono">{{ log.request }}</pre>
+                  </details>
+
+                  <details class="group">
+                    <summary class="text-xs text-slate-500 dark:text-white/50 cursor-pointer hover:text-slate-700 dark:hover:text-white/70 list-none flex items-center">
+                      <i class="fas fa-chevron-right mr-1 transition-transform group-open:rotate-90"></i>
+                      <span>{{ t('sms.responseContent') || '返回结果' }}</span>
+                    </summary>
+                    <pre class="mt-2 p-2 text-xs bg-slate-100 dark:bg-black/20 rounded-lg overflow-x-auto whitespace-pre-wrap break-all text-slate-700 dark:text-white/70 font-mono">{{ log.response }}</pre>
+                  </details>
+                </div>
+
+                <!-- 时间 -->
+                <p class="text-xs text-slate-400 dark:text-white/30 mt-2 text-right">{{ formatLogTime(log.created_at) }}</p>
+              </div>
             </div>
           </div>
         </div>

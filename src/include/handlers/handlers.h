@@ -117,6 +117,10 @@ void handle_ipv6_proxy_restart(struct mg_connection *c, struct mg_http_message *
 void handle_ipv6_proxy_status(struct mg_connection *c, struct mg_http_message *hm);
 void handle_ipv6_proxy_send(struct mg_connection *c, struct mg_http_message *hm);
 void handle_ipv6_proxy_test(struct mg_connection *c, struct mg_http_message *hm);
+void handle_ipv6_proxy_send_logs(struct mg_connection *c, struct mg_http_message *hm);
+
+/* 短信Webhook日志 */
+void handle_sms_webhook_logs(struct mg_connection *c, struct mg_http_message *hm);
 
 #ifdef __cplusplus
 }
