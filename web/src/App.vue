@@ -382,10 +382,10 @@ onUnmounted(() => {
                       >
                       <button 
                         type="button"
-                        @click="showPassword = !showPassword"
-                        class="absolute right-4 top-1/2 -translate-y-1/2 w-6 text-center text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/60 transition-colors"
+                        @click.stop.prevent="showPassword = !showPassword"
+                        class="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 dark:text-white/30 hover:text-slate-600 dark:hover:text-white/60 transition-colors z-10"
                       >
-                        <font-awesome-icon :icon="showPassword ? 'eye-slash' : 'eye'" class="w-5" fixed-width />
+                        <font-awesome-icon :icon="showPassword ? 'eye-slash' : 'eye'" class="w-5" />
                       </button>
                     </div>
                   </div>

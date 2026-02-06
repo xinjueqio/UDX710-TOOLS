@@ -47,7 +47,7 @@ async function handleAirplaneToggle() {
     success(airplaneMode.value ? t('network.airplaneModeOn') : t('network.airplaneModeOff'))
   } catch (err) {
     airplaneMode.value = !airplaneMode.value
-    error(t('network.switchFailed') + ': ' + err.message)
+    error(t('network.switchFailed'))
   }
 }
 
@@ -56,7 +56,7 @@ async function handleNetworkModeChange(mode) {
     await setNetworkMode(mode)
     success(t('network.networkModeSubmitted'))
   } catch (err) {
-    error(t('network.switchFailed') + ': ' + err.message)
+    error(t('network.switchFailed'))
   }
 }
 
@@ -68,7 +68,7 @@ async function handleSlotSwitch(slot) {
     currentSlot.value = slot
     success(t('network.slotSwitched'))
   } catch (err) {
-    error(t('network.switchFailed') + ': ' + err.message)
+    error(t('network.switchFailed'))
   } finally {
     saving.value = false
   }
@@ -95,11 +95,11 @@ async function handleDataToggle() {
       success(dataActive.value ? t('network.dataOn') : t('network.dataOff'))
     } else {
       dataActive.value = !dataActive.value
-      error(res.message || t('common.failed'))
+      error(t('common.failed'))
     }
   } catch (err) {
     dataActive.value = !dataActive.value
-    error(t('network.switchFailed') + ': ' + err.message)
+    error(t('network.switchFailed'))
   } finally {
     dataLoading.value = false
   }
@@ -130,11 +130,11 @@ async function handleRoamingToggle() {
       success(roamingAllowed.value ? t('network.roamingOn') : t('network.roamingOff'))
     } else {
       roamingAllowed.value = !roamingAllowed.value
-      error(res.message || t('common.failed'))
+      error(t('common.failed'))
     }
   } catch (err) {
     roamingAllowed.value = !roamingAllowed.value
-    error(t('network.switchFailed') + ': ' + err.message)
+    error(t('network.switchFailed'))
   } finally {
     roamingLoading.value = false
   }

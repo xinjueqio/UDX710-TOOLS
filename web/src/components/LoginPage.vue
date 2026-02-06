@@ -20,7 +20,7 @@
             <button 
               type="button" 
               class="toggle-password"
-              @click="showPassword = !showPassword"
+              @click.stop.prevent="showPassword = !showPassword"
             >
               <i :class="showPassword ? 'fas fa-eye-slash' : 'fas fa-eye'"></i>
             </button>

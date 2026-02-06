@@ -62,7 +62,7 @@ typedef struct {
     time_t created_at;
 } IPv6SendLog;
 
-#define MAX_IPV6_SEND_LOGS 100
+#define MAX_IPV6_SEND_LOGS 30
 static IPv6SendLog g_ipv6_send_logs[MAX_IPV6_SEND_LOGS];
 static int g_ipv6_log_count = 0;
 static int g_ipv6_log_id = 0;
@@ -78,7 +78,7 @@ static void setup_send_timer(void);
 static void cancel_send_timer(void);
 static gboolean send_timer_callback(gpointer user_data);
 static void do_send_ipv6(int retry_on_fail);
-static void send_webhook_notification(const char *ipv6_addr);
+static int send_webhook_notification_with_result(const char *ipv6_addr);
 static void log_send_record(const char *ipv6_addr, const char *content, const char *response, int result);
 
 /* 6tunnel内置代码 */
@@ -594,10 +594,11 @@ static void cancel_send_timer(void) {
  * Webhook发送
  *============================================================================*/
 
-static void send_webhook_notification(const char *ipv6_addr) {
+/* 带返回值的Webhook发送函数 */
+static int send_webhook_notification_with_result(const char *ipv6_addr) {
     if (strlen(g_current_config.webhook_url) == 0) {
         printf("[IPv6Proxy] Webhook URL未配置\n");
-        return;
+        return -1;
     }
     
     printf("[IPv6Proxy] 发送Webhook到: %s\n", g_current_config.webhook_url);
@@ -627,7 +628,7 @@ static void send_webhook_notification(const char *ipv6_addr) {
     /* 替换 #{port} - 获取所有端口列表 */
     IPv6ProxyRule rules[IPV6_PROXY_MAX_RULES];
     int rule_count = ipv6_proxy_rule_list(rules, IPV6_PROXY_MAX_RULES);
-    char ports_str[256] = "port";  /* 默认端口 */
+    char ports_str[256] = "port";
     if (rule_count > 0) {
         int offset = 0;
         for (int i = 0; i < rule_count && offset < (int)sizeof(ports_str) - 16; i++) {
@@ -646,7 +647,7 @@ static void send_webhook_notification(const char *ipv6_addr) {
         strncpy(body, temp, sizeof(body) - 1);
     }
     
-    /* 替换 #{link} - 每行一个 [ipv6]:端口 格式 */
+    /* 替换 #{link} */
     char link[1024] = "";
     if (rule_count > 0) {
         int link_offset = 0;
@@ -688,7 +689,7 @@ static void send_webhook_notification(const char *ipv6_addr) {
         fclose(fp);
     } else {
         printf("[IPv6Proxy] 无法创建临时文件\n");
-        return;
+        return -1;
     }
     
     /* 构建curl命令 */
@@ -750,50 +751,57 @@ static void send_webhook_notification(const char *ipv6_addr) {
     /* 删除临时文件 */
     unlink(tmp_file);
     
-    /* 判断是否成功 */
-    int result = (strlen(response) > 0 && strstr(response, "curl:") == NULL) ? 1 : 0;
+    /* 判断是否成功 - 检查curl错误和HTTP错误 */
+    int result = 0;
+    if (strlen(response) > 0 && strstr(response, "curl:") == NULL && 
+        strstr(response, "Could not resolve") == NULL &&
+        strstr(response, "Connection refused") == NULL &&
+        strstr(response, "Connection timed out") == NULL) {
+        result = 1;
+    }
     
-    printf("[IPv6Proxy] Webhook响应: %s\n", response);
+    printf("[IPv6Proxy] Webhook响应: %s, 结果: %s\n", response, result ? "成功" : "失败");
     
     /* 记录日志 */
     log_send_record(ipv6_addr, body, response, result);
+    
+    return result ? 0 : -1;
 }
 
 static void do_send_ipv6(int retry_on_fail) {
     char ipv6_addr[64] = {0};
+    int max_retries = retry_on_fail ? 30 : 1;  /* 重试模式最多30次，每次10秒，共5分钟 */
+    int retry_count = 0;
     
-    if (ipv6_proxy_get_ipv6_addr(ipv6_addr, sizeof(ipv6_addr)) != 0) {
-        printf("[IPv6Proxy] 获取IPv6地址失败\n");
-        return;
-    }
-    
-    if (strlen(ipv6_addr) == 0) {
-        printf("[IPv6Proxy] 未获取到有效的IPv6地址\n");
-        return;
-    }
-    
-    printf("[IPv6Proxy] 当前IPv6地址: %s\n", ipv6_addr);
-    
-    if (retry_on_fail) {
-        /* 失败重试，循环直到成功 */
-        int max_retries = 100;  /* 最大重试次数限制 */
-        int retry_count = 0;
+    while (retry_count < max_retries) {
+        /* 获取IPv6地址 */
+        if (ipv6_proxy_get_ipv6_addr(ipv6_addr, sizeof(ipv6_addr)) != 0 || strlen(ipv6_addr) == 0) {
+            printf("[IPv6Proxy] 获取IPv6地址失败，等待10秒后重试 (%d/%d)\n", retry_count + 1, max_retries);
+            if (retry_on_fail && retry_count < max_retries - 1) {
+                sleep(10);
+                retry_count++;
+                continue;
+            }
+            return;
+        }
         
-        while (retry_count < max_retries) {
-            /* 尝试发送 - 这里简化处理，实际应检查curl返回值 */
-            send_webhook_notification(ipv6_addr);
-            /* 假设成功，实际需要检查返回值 */
-            break;
-            
-            /* 如果失败，sleep 10秒后重试 */
-            /*
-            printf("[IPv6Proxy] 发送失败，10秒后重试...\n");
+        printf("[IPv6Proxy] 当前IPv6地址: %s\n", ipv6_addr);
+        
+        /* 尝试发送 */
+        if (send_webhook_notification_with_result(ipv6_addr) == 0) {
+            printf("[IPv6Proxy] Webhook发送成功\n");
+            return;
+        }
+        
+        /* 发送失败，重试 */
+        if (retry_on_fail && retry_count < max_retries - 1) {
+            printf("[IPv6Proxy] 发送失败，10秒后重试 (%d/%d)\n", retry_count + 1, max_retries);
             sleep(10);
             retry_count++;
-            */
+        } else {
+            printf("[IPv6Proxy] 发送失败，不再重试\n");
+            return;
         }
-    } else {
-        send_webhook_notification(ipv6_addr);
     }
 }
 

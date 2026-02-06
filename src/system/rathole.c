@@ -457,10 +457,20 @@ int rathole_start(void) {
     char cmd[512];
     char output[256];
     
-    /* 检查是否已运行 */
+    /* 先强制停止所有可能存在的rathole进程 */
+    printf("[Rathole] 启动前先清理可能存在的进程...\n");
+    snprintf(cmd, sizeof(cmd), "pkill -9 -f '%s' 2>/dev/null; sleep 0.5", RATHOLE_BIN_PATH);
+    run_command(output, sizeof(output), "sh", "-c", cmd, NULL);
+    
+    /* 清理PID文件 */
+    unlink(RATHOLE_PID_PATH);
+    
+    /* 再次检查是否已运行 */
     if (rathole_get_status(NULL) == 1) {
-        printf("[Rathole] 服务已在运行中\n");
-        return 0;
+        printf("[Rathole] 清理后仍有进程运行，再次强制终止\n");
+        snprintf(cmd, sizeof(cmd), "pkill -9 -f '%s'", RATHOLE_BIN_PATH);
+        run_command(output, sizeof(output), "sh", "-c", cmd, NULL);
+        usleep(500000);
     }
     
     /* 检查可执行文件 */
@@ -514,18 +524,31 @@ int rathole_stop(void) {
     char cmd[256];
     char output[128];
     
-    /* 检查是否运行 */
-    if (rathole_get_status(NULL) == 0) {
-        printf("[Rathole] 服务未运行\n");
-        return 0;
+    printf("[Rathole] 停止服务\n");
+    
+    /* 使用多种方式确保进程被终止 */
+    /* 方式1: 通过PID文件终止 */
+    FILE *fp = fopen(RATHOLE_PID_PATH, "r");
+    if (fp) {
+        int pid = 0;
+        if (fscanf(fp, "%d", &pid) == 1 && pid > 0) {
+            printf("[Rathole] 从PID文件读取到PID=%d，终止进程\n", pid);
+            kill(pid, SIGTERM);
+            usleep(300000);
+            kill(pid, SIGKILL);
+        }
+        fclose(fp);
     }
     
-    /* 终止进程 */
-    snprintf(cmd, sizeof(cmd), "pkill -f '%s.*client.toml'", RATHOLE_BIN_PATH);
+    /* 方式2: 通过pkill终止所有相关进程 */
+    snprintf(cmd, sizeof(cmd), "pkill -f '%s'", RATHOLE_BIN_PATH);
     run_command(output, sizeof(output), "sh", "-c", cmd, NULL);
+    usleep(300000);
     
-    /* 等待进程退出 */
-    usleep(500000);  /* 500ms */
+    /* 方式3: 强制终止 */
+    snprintf(cmd, sizeof(cmd), "pkill -9 -f '%s'", RATHOLE_BIN_PATH);
+    run_command(output, sizeof(output), "sh", "-c", cmd, NULL);
+    usleep(300000);
     
     /* 清理 PID 文件 */
     unlink(RATHOLE_PID_PATH);
@@ -534,11 +557,7 @@ int rathole_stop(void) {
         printf("[Rathole] 服务已停止\n");
         return 0;
     } else {
-        /* 强制终止 */
-        snprintf(cmd, sizeof(cmd), "pkill -9 -f '%s.*client.toml'", RATHOLE_BIN_PATH);
-        run_command(output, sizeof(output), "sh", "-c", cmd, NULL);
-        usleep(300000);
-        printf("[Rathole] 服务已强制停止\n");
+        printf("[Rathole] 警告：可能仍有进程未完全停止\n");
         return 0;
     }
 }

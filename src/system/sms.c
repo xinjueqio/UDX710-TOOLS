@@ -30,7 +30,7 @@ static int g_max_sms_count = DEFAULT_MAX_SMS_COUNT;
 static int g_max_sent_count = DEFAULT_MAX_SENT_COUNT;
 
 /* Webhook发送日志（内存存储，重启后清空） */
-#define MAX_WEBHOOK_LOGS 100
+#define MAX_WEBHOOK_LOGS 30
 static SmsWebhookLog g_webhook_logs[MAX_WEBHOOK_LOGS];
 static int g_webhook_log_count = 0;
 static int g_webhook_log_id = 0;
