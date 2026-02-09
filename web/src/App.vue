@@ -131,9 +131,12 @@ async function handleLogin() {
         localStorage.removeItem('saved_password')
       }
       
-      // 登录成功后开始获取系统信息
-      fetchSystemInfo()
-      startRefreshInterval()
+      // 登录成功后检查密保状态
+      await checkSecurityStatus()
+      if (securitySet.value) {
+        fetchSystemInfo()
+        startRefreshInterval()
+      }
     } else {
       showError(result.data?.error || t('auth.wrongPassword'))
     }
