@@ -8,6 +8,8 @@
 #include "auth.h"
 #include "database.h"
 #include "sha256.h"
+
+#define SECURITY_ICCID_MAX_LEN 24 /* ICCID最大长度(仅内部使用) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,21 +73,26 @@ int security_get_status(SecurityStatus *status) {
 
   memset(status, 0, sizeof(SecurityStatus));
 
-  /* 查询是否有密保记录 */
+  /* 查询密保记录，检查 answer1_hash 是否有效值来判断是否真正设置过 */
   const char *sql =
-      "SELECT iccid, created_at FROM security_questions WHERE id = 1;";
+      "SELECT answer1_hash, created_at FROM security_questions WHERE id = 1;";
 
   if (db_query_string(sql, output, sizeof(output)) == 0 && strlen(output) > 0) {
-    /* 解析输出 */
+    /* 解析输出: answer1_hash|created_at */
     char *p = strchr(output, '|');
     if (p) {
       *p = '\0';
-      strncpy(status->iccid, output, sizeof(status->iccid) - 1);
-      status->created_at = atol(p + 1);
+      /* answer1_hash 必须是有效的SHA256哈希(64字符) */
+      if (strlen(output) == 64) {
+        status->is_set = 1;
+        status->created_at = atol(p + 1);
+      } else {
+        status->is_set = 0;
+      }
     } else {
-      strncpy(status->iccid, output, sizeof(status->iccid) - 1);
+      /* 没有分隔符，格式无效 */
+      status->is_set = 0;
     }
-    status->is_set = 1;
   } else {
     status->is_set = 0;
   }
@@ -119,11 +126,10 @@ int security_setup(const SecuritySetupRequest *req) {
     return -1;
   }
 
-  /* 获取当前ICCID */
-  if (get_iccid(current_iccid, sizeof(current_iccid)) != 0 ||
-      strlen(current_iccid) == 0) {
-    printf("[Security] 设置失败：无法获取ICCID\n");
-    return -2;
+  /* 获取当前ICCID（仅作为记录，获取失败不影响设置） */
+  if (get_iccid(current_iccid, sizeof(current_iccid)) != 0) {
+    printf("[Security] 警告：无法获取ICCID，继续设置\n");
+    current_iccid[0] = '\0';
   }
 
   /* 计算答案哈希 */
@@ -148,7 +154,7 @@ int security_setup(const SecuritySetupRequest *req) {
     return -2;
   }
 
-  printf("[Security] 密保设置成功，绑定ICCID: %s\n", current_iccid);
+  printf("[Security] 密保设置成功\n");
   return 0;
 }
 
@@ -195,23 +201,20 @@ int security_verify(const SecurityVerifyRequest *req) {
   char answer2_hash[SHA256_HEX_SIZE] = {0};
   char stored_hash1[SHA256_HEX_SIZE] = {0};
   char stored_hash2[SHA256_HEX_SIZE] = {0};
-  char stored_iccid[SECURITY_ICCID_MAX_LEN] = {0};
-  char current_iccid[SECURITY_ICCID_MAX_LEN] = {0};
 
   if (!req) {
-    return -3;
+    return -2;
   }
 
   /* 验证确认文本 */
   if (strcmp(req->confirm, SECURITY_CONFIRM_TEXT) != 0) {
     printf("[Security] 验证失败：确认文本不匹配\n");
-    return -3;
+    return -2;
   }
 
-  /* 查询存储的数据 */
-  const char *sql =
-      "SELECT answer1_hash || '|' || answer2_hash || '|' || iccid "
-      "FROM security_questions WHERE id = 1;";
+  /* 查询存储的答案哈希 */
+  const char *sql = "SELECT answer1_hash || '|' || answer2_hash "
+                    "FROM security_questions WHERE id = 1;";
 
   if (db_query_string(sql, output, sizeof(output)) != 0 ||
       strlen(output) == 0) {
@@ -219,24 +222,24 @@ int security_verify(const SecurityVerifyRequest *req) {
     return -1;
   }
 
-  /* 解析存储的数据 */
+  /* 解析存储的数据: answer1_hash|answer2_hash */
   char *p1 = strchr(output, '|');
   if (!p1)
     return -1;
   *p1 = '\0';
   strncpy(stored_hash1, output, sizeof(stored_hash1) - 1);
-
-  char *p2 = strchr(p1 + 1, '|');
-  if (!p2)
-    return -1;
-  *p2 = '\0';
   strncpy(stored_hash2, p1 + 1, sizeof(stored_hash2) - 1);
 
-  strncpy(stored_iccid, p2 + 1, sizeof(stored_iccid) - 1);
   /* 去除换行符 */
-  char *nl = strchr(stored_iccid, '\n');
+  char *nl = strchr(stored_hash2, '\n');
   if (nl)
     *nl = '\0';
+
+  /* 检查存储的哈希是否有效 */
+  if (strlen(stored_hash1) != 64 || strlen(stored_hash2) != 64) {
+    printf("[Security] 验证失败：密保数据无效\n");
+    return -1;
+  }
 
   /* 计算输入答案的哈希 */
   compute_answer_hash(req->answer1, answer1_hash);
@@ -247,21 +250,6 @@ int security_verify(const SecurityVerifyRequest *req) {
       strcmp(answer2_hash, stored_hash2) != 0) {
     printf("[Security] 验证失败：答案错误\n");
     return -1;
-  }
-
-  /* 获取当前ICCID */
-  if (get_iccid(current_iccid, sizeof(current_iccid)) != 0) {
-    printf("[Security] 验证失败：无法获取当前ICCID\n");
-    return -2;
-  }
-
-  /* 验证ICCID - 可以验证用户输入的或当前设备的 */
-  if (strcmp(req->iccid, stored_iccid) != 0 &&
-      strcmp(current_iccid, stored_iccid) != 0) {
-    printf("[Security] 验证失败：ICCID不匹配\n");
-    printf("[Security] 输入=%s, 存储=%s, 当前=%s\n", req->iccid, stored_iccid,
-           current_iccid);
-    return -2;
   }
 
   printf("[Security] 验证通过\n");
@@ -345,12 +333,4 @@ int security_factory_reset(const SecurityVerifyRequest *req) {
   system("reboot");
 
   return 0;
-}
-
-int security_get_current_iccid(char *iccid, size_t size) {
-  if (!iccid || size == 0) {
-    return -1;
-  }
-
-  return get_iccid(iccid, size);
 }

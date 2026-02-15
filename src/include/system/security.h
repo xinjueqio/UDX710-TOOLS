@@ -16,7 +16,6 @@
 #define SECURITY_QUESTION_MAX_LEN 256      /* 问题最大长度 */
 #define SECURITY_ANSWER_MAX_LEN 128        /* 答案最大长度 */
 #define SECURITY_MD5_LEN 33                /* MD5哈希长度(32+1) */
-#define SECURITY_ICCID_MAX_LEN 24          /* ICCID最大长度 */
 #define SECURITY_CONFIRM_TEXT "已知晓风险" /* 确认文本 */
 
 /*============================================================================
@@ -27,9 +26,8 @@
  * @brief 密保状态
  */
 typedef struct {
-  int is_set;                         /* 是否已设置密保 */
-  char iccid[SECURITY_ICCID_MAX_LEN]; /* 绑定的ICCID */
-  long created_at;                    /* 创建时间戳 */
+  int is_set;      /* 是否已设置密保 */
+  long created_at; /* 创建时间戳 */
 } SecurityStatus;
 
 /**
@@ -56,7 +54,6 @@ typedef struct {
 typedef struct {
   char answer1[SECURITY_ANSWER_MAX_LEN];
   char answer2[SECURITY_ANSWER_MAX_LEN];
-  char iccid[SECURITY_ICCID_MAX_LEN];
   char confirm[32]; /* 确认文本 */
 } SecurityVerifyRequest;
 
@@ -94,7 +91,7 @@ int security_get_questions(SecurityQuestions *questions);
 /**
  * @brief 验证密保答案
  * @param req 验证请求
- * @return 0=验证通过, -1=答案错误, -2=ICCID不匹配, -3=确认文本错误
+ * @return 0=验证通过, -1=答案错误/未设置, -2=确认文本错误
  */
 int security_verify(const SecurityVerifyRequest *req);
 
@@ -111,13 +108,5 @@ int security_reset_password(const SecurityVerifyRequest *req);
  * @return 0=成功, 其他=失败
  */
 int security_factory_reset(const SecurityVerifyRequest *req);
-
-/**
- * @brief 获取当前设备ICCID
- * @param iccid 输出缓冲区
- * @param size 缓冲区大小
- * @return 0=成功, -1=失败
- */
-int security_get_current_iccid(char *iccid, size_t size);
 
 #endif /* SECURITY_H */

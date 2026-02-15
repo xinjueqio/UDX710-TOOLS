@@ -3017,17 +3017,11 @@ void handle_security_status(struct mg_connection *c,
     return;
   }
 
-  /* 获取当前ICCID */
-  char current_iccid[SECURITY_ICCID_MAX_LEN] = {0};
-  security_get_current_iccid(current_iccid, sizeof(current_iccid));
-
   JsonBuilder *j = json_new();
   json_obj_open(j);
   json_add_str(j, "status", "ok");
   json_key_obj_open(j, "data");
   json_add_bool(j, "is_set", status.is_set);
-  json_add_str(j, "bound_iccid", status.iccid);
-  json_add_str(j, "current_iccid", current_iccid);
   json_add_long(j, "created_at", status.created_at);
   json_obj_close(j);
   json_obj_close(j);
@@ -3073,10 +3067,8 @@ void handle_security_setup(struct mg_connection *c,
   int ret = security_setup(&req);
   if (ret == 0) {
     HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"密保设置成功\"}");
-  } else if (ret == -2) {
+  } else if (ret == -1) {
     HTTP_ERROR(c, 400, "密保已设置，无法修改");
-  } else if (ret == -3) {
-    HTTP_ERROR(c, 400, "无法获取当前ICCID");
   } else {
     HTTP_ERROR(c, 500, "密保设置失败");
   }
@@ -3133,13 +3125,9 @@ void handle_security_verify(struct mg_connection *c,
     HTTP_OK(c,
             "{\"status\":\"ok\",\"message\":\"验证通过\",\"verified\":true}");
   } else if (ret == -2) {
-    HTTP_ERROR(c, 400, "ICCID不匹配，请使用原SIM卡");
-  } else if (ret == -3) {
     HTTP_ERROR(c, 400, "请输入确认文本：已知晓风险");
-  } else if (ret == -4) {
-    HTTP_ERROR(c, 400, "答案不正确");
   } else {
-    HTTP_ERROR(c, 404, "未设置密保");
+    HTTP_ERROR(c, 400, "答案不正确或未设置密保");
   }
 }
 
@@ -3171,13 +3159,9 @@ void handle_security_reset_password(struct mg_connection *c,
   if (ret == 0) {
     HTTP_OK(c, "{\"status\":\"ok\",\"message\":\"密码已重置为默认值\"}");
   } else if (ret == -2) {
-    HTTP_ERROR(c, 400, "ICCID不匹配，请使用原SIM卡");
-  } else if (ret == -3) {
     HTTP_ERROR(c, 400, "请输入确认文本：已知晓风险");
-  } else if (ret == -4) {
-    HTTP_ERROR(c, 400, "答案不正确");
   } else {
-    HTTP_ERROR(c, 500, "密码重置失败");
+    HTTP_ERROR(c, 400, "答案不正确或未设置密保");
   }
 }
 
@@ -3210,12 +3194,8 @@ void handle_security_factory_reset(struct mg_connection *c,
     HTTP_OK(c,
             "{\"status\":\"ok\",\"message\":\"出厂重置完成，所有数据已清除\"}");
   } else if (ret == -2) {
-    HTTP_ERROR(c, 400, "ICCID不匹配，请使用原SIM卡");
-  } else if (ret == -3) {
     HTTP_ERROR(c, 400, "请输入确认文本：已知晓风险");
-  } else if (ret == -4) {
-    HTTP_ERROR(c, 400, "答案不正确");
   } else {
-    HTTP_ERROR(c, 500, "出厂重置失败");
+    HTTP_ERROR(c, 400, "答案不正确或未设置密保");
   }
 }
