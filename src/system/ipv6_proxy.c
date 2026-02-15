@@ -905,7 +905,7 @@ int ipv6_proxy_init(const char *db_path) {
   if (g_current_config.send_enabled &&
       strlen(g_current_config.webhook_url) > 0) {
     printf("[IPv6Proxy] 开机后15秒发送IPv6地址\n");
-    g_timeout_add_seconds(15, (GSourceFunc)send_startup_ipv6_callback, NULL);
+    g_timeout_add_seconds(120, (GSourceFunc)send_startup_ipv6_callback, NULL);
   }
 
   g_ipv6_proxy_initialized = 1;
